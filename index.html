@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Descent Companion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#12161f; --surface:#1b212d; --surface2:#232b3a; --line:#313c50;
+    --text:#e9e3d4; --muted:#94a0b3; --gold:#e0aa4d; --gold-dim:#8a6a34;
+    --teal:#4cbf9d; --teal-bg:#173129; --coral:#e07a5f; --coral-bg:#37201b;
+    --danger:#d9564f;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  body{background:#0b0e14; color:var(--text); font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:15px; line-height:1.5; display:flex; justify-content:center; min-height:100vh;}
+  .app{width:100%; max-width:480px; background:var(--bg); min-height:100vh; display:flex; flex-direction:column; position:relative; border-left:1px solid #1d2430; border-right:1px solid #1d2430;}
+  header{padding:14px 18px 10px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line);}
+  header h1{font-family:'Cinzel',serif; font-size:19px; font-weight:600; color:var(--gold); letter-spacing:1px;}
+  .sync-pill{font-size:11px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted);}
+  .sync-pill.on{border-color:#2a5647; color:var(--teal);}
+  main{flex:1; overflow-y:auto; padding:16px 16px 90px;}
+  .screen{display:none;}
+  .screen.active{display:block;}
+  h2{font-family:'Cinzel',serif; font-size:15px; font-weight:600; color:var(--text); letter-spacing:.8px; margin:18px 0 10px;}
+  h2:first-child{margin-top:2px;}
+  .hint{font-size:12.5px; color:var(--muted); margin:-6px 0 12px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .mat-row{display:flex; align-items:center; justify-content:space-between; padding:7px 2px; border-bottom:1px solid #232b3a; font-size:14px;}
+  .mat-row:last-child{border-bottom:none;}
+  .mat-name{flex:1;}
+  .mat-name.ess{color:#c9b8e8;}
+  .stepper{display:flex; align-items:center; gap:0; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .stepper button{width:34px; height:32px; background:var(--surface2); color:var(--text); border:none; font-size:17px; cursor:pointer;}
+  .stepper button:active{background:var(--line);}
+  .stepper span{min-width:36px; text-align:center; font-weight:600; font-size:14px; cursor:pointer;}
+  .stars{color:var(--gold); letter-spacing:2px; font-size:15px; white-space:nowrap;}
+  .stars .off{color:#3d4658;}
+  .stars.pick span{cursor:pointer; padding:2px;}
+  .chip{display:inline-block; background:var(--surface2); border:1px solid var(--line); border-radius:999px; padding:2px 9px; font-size:12px; margin:2px 3px 2px 0; color:var(--text);}
+  .chip.hero{border-color:var(--gold-dim); color:var(--gold);}
+  .chip.coin{border-color:var(--gold-dim); color:var(--gold); font-weight:600;}
+  .recipe-card h3{font-size:15.5px; font-weight:600; margin-bottom:2px; word-break:break-word;}
+  .recipe-card .meta{margin:6px 0;}
+  .recipe-card.ignored{opacity:.45;}
+  .badge{font-size:11px; padding:2px 8px; border-radius:999px; font-weight:600; letter-spacing:.3px; white-space:nowrap;}
+  .badge.owned{background:var(--teal-bg); color:var(--teal); border:1px solid #2a5647;}
+  .badge.built{background:var(--surface2); color:var(--muted); border:1px solid var(--line);}
+  .btn{display:inline-block; background:var(--surface2); color:var(--text); border:1px solid var(--line); border-radius:9px; padding:8px 14px; font-size:13.5px; font-weight:600; cursor:pointer; text-align:center; font-family:inherit;}
+  .btn:active{transform:scale(.97);}
+  .btn:disabled{opacity:.35; cursor:not-allowed; transform:none;}
+  .btn.gold{background:#33270f; border-color:var(--gold-dim); color:var(--gold);}
+  .btn.teal{background:var(--teal-bg); border-color:#2a5647; color:var(--teal);}
+  .btn.danger{background:var(--coral-bg); border-color:#5c2c22; color:var(--coral);}
+  .btn.big{width:100%; padding:13px; font-size:15px; margin-top:8px;}
+  .btn-row{display:flex; gap:8px; margin-top:10px;}
+  .btn-row .btn{flex:1;}
+  .icon-btn{background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:4px 6px;}
+  nav{position:absolute; bottom:0; left:0; right:0; background:#141924; border-top:1px solid var(--line); display:flex;}
+  nav button{flex:1; background:none; border:none; color:var(--muted); padding:9px 2px 10px; cursor:pointer; font-size:10.5px; display:flex; flex-direction:column; align-items:center; gap:3px; font-family:inherit;}
+  nav button .ic{font-size:19px; line-height:1;}
+  nav button.active{color:var(--gold);}
+  .heroes-grid{display:grid; grid-template-columns:1fr 1fr; gap:9px;}
+  .hero-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 10px; text-align:center; cursor:pointer; font-family:'Cinzel',serif; font-weight:600; letter-spacing:.6px; font-size:14.5px; color:var(--muted);}
+  .hero-card.sel{border-color:var(--gold); color:var(--gold); background:#241f13;}
+  .overlay{display:none; position:fixed; inset:0; background:rgba(5,7,11,.78); z-index:50; justify-content:center; align-items:center; padding:20px;}
+  .overlay.open{display:flex;}
+  .modal{background:var(--surface); border:1px solid var(--line); border-radius:14px; width:100%; max-width:420px; max-height:86vh; overflow-y:auto; padding:18px;}
+  .modal h3{font-family:'Cinzel',serif; font-size:16px; color:var(--gold); margin-bottom:4px; letter-spacing:.6px;}
+  .modal .sub{font-size:12.5px; color:var(--muted); margin-bottom:14px;}
+  label{display:block; font-size:12px; color:var(--muted); margin:12px 0 4px; letter-spacing:.3px;}
+  input[type=text],input[type=number],select{width:100%; background:var(--surface2); border:1px solid var(--line); border-radius:8px; color:var(--text); padding:9px 11px; font-size:14px; font-family:inherit;}
+  .inline{display:flex; gap:8px; align-items:center;}
+  .opt-card{background:var(--surface2); border:1px solid var(--line); border-radius:11px; padding:12px; margin-bottom:10px; cursor:pointer;}
+  .opt-card:hover{border-color:var(--gold-dim);}
+  .opt-card .val{color:var(--gold); font-size:12.5px; font-weight:600; margin-top:6px;}
+  .opt-card ul{list-style:none; margin-top:4px;}
+  .opt-card li{font-size:13px; color:var(--muted); padding:1px 0;}
+  .plan-step{display:flex; gap:11px; padding:10px 2px; border-bottom:1px solid #232b3a; align-items:flex-start;}
+  .plan-step:last-child{border:none;}
+  .plan-n{width:24px; height:24px; border-radius:50%; background:var(--surface2); border:1px solid var(--gold-dim); color:var(--gold); font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;}
+  .plan-step .amt{margin-left:auto; font-weight:600; white-space:nowrap; font-size:14px;}
+  .amt.pos{color:var(--teal);} .amt.neg{color:var(--coral);}
+  .summary-row{display:flex; justify-content:space-between; padding:6px 2px; font-size:13.5px; color:var(--muted); gap:10px;}
+  .summary-row b{color:var(--text); text-align:right;}
+  .settings-grid{display:grid; grid-template-columns:1fr 80px; gap:8px 12px; align-items:center; font-size:14px;}
+  .settings-grid input{padding:7px 9px; text-align:center;}
+  .empty{color:var(--muted); font-size:13.5px; text-align:center; padding:14px 6px;}
+  .toast{position:fixed; bottom:76px; left:50%; transform:translateX(-50%); background:#0e2b22; border:1px solid #2a5647; color:var(--teal); padding:9px 16px; border-radius:999px; font-size:13px; z-index:99; display:none; max-width:90%;}
+  .checkline{display:flex; gap:8px; align-items:center; font-size:13.5px; margin-top:10px; color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Descent Companion</h1>
+    <span class="sync-pill" id="sync-pill">◌ locale</span>
+  </header>
+  <main id="main">
+    <section class="screen active" id="scr-inv"></section>
+    <section class="screen" id="scr-mkt"></section>
+    <section class="screen" id="scr-own"></section>
+    <section class="screen" id="scr-opt"></section>
+    <section class="screen" id="scr-set"></section>
+  </main>
+  <nav>
+    <button class="active" data-scr="scr-inv" onclick="goScreen('scr-inv',this)"><span class="ic">🎒</span>Inventario</button>
+    <button data-scr="scr-mkt" onclick="goScreen('scr-mkt',this)"><span class="ic">⚖️</span>Mercato</button>
+    <button data-scr="scr-own" onclick="goScreen('scr-own',this)"><span class="ic">📜</span>Ricette</button>
+    <button data-scr="scr-opt" onclick="goScreen('scr-opt',this)"><span class="ic">⚡</span>Ottimizza</button>
+    <button data-scr="scr-set" onclick="goScreen('scr-set',this)"><span class="ic">⚙️</span>Altro</button>
+  </nav>
+  <div id="modals"></div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════
+   ⬇️⬇️⬇️  INCOLLA QUI LA TUA CONFIGURAZIONE FIREBASE  ⬇️⬇️⬇️
+   Sostituisci l'oggetto vuoto qui sotto con il blocco firebaseConfig
+   copiato dalla console Firebase (Impostazioni progetto → Le tue app).
+   Senza configurazione l'app funziona comunque in "modalità locale"
+   (dati salvati solo su questo dispositivo, nessuna condivisione).
+═══════════════════════════════════════════════════════════════ */
+const firebaseConfig = {
+  // apiKey: "…",
+  // authDomain: "…",
+  // databaseURL: "…",
+  // projectId: "…",
+  // storageBucket: "…",
+  // messagingSenderId: "…",
+  // appId: "…"
+};
+/* ⬆️⬆️⬆️  FINE CONFIGURAZIONE FIREBASE  ⬆️⬆️⬆️ */
+
+/* ── Dati fissi di gioco ── */
+const MATERIALI = [
+  {id:"MAT_METAL",    nome:"Metalli",   compra:5,  vendi:4,  ess:false},
+  {id:"MAT_LEATHER",  nome:"Pelle",     compra:5,  vendi:4,  ess:false},
+  {id:"MAT_CURIOS",   nome:"Curiosità", compra:5,  vendi:4,  ess:false},
+  {id:"MAT_MINERALS", nome:"Minerali",  compra:5,  vendi:4,  ess:false},
+  {id:"MAT_BONE",     nome:"Ossa",      compra:5,  vendi:4,  ess:false},
+  {id:"MAT_HERBS",    nome:"Erba",      compra:5,  vendi:4,  ess:false},
+  {id:"MAT_CLOTH",    nome:"Stoffa",    compra:5,  vendi:4,  ess:false},
+  {id:"MAT_AQUOS",    nome:"Aquos",     compra:25, vendi:19, ess:true},
+  {id:"MAT_MORTOS",   nome:"Mortos",    compra:30, vendi:22, ess:true},
+  {id:"MAT_TERROS",   nome:"Terros",    compra:25, vendi:19, ess:true},
+  {id:"MAT_LUMOS",    nome:"Lumos",     compra:30, vendi:22, ess:true},
+  {id:"MAT_ANEMOS",   nome:"Anemos",    compra:25, vendi:19, ess:true},
+  {id:"MAT_TOXOS",    nome:"Toxos",     compra:30, vendi:22, ess:true},
+  {id:"MAT_VIGOS",    nome:"Vigos",     compra:30, vendi:22, ess:true},
+  {id:"MAT_UMBROS",   nome:"Umbros",    compra:30, vendi:22, ess:true},
+  {id:"MAT_FORTUNOS", nome:"Fortunos",  compra:30, vendi:22, ess:true},
+  {id:"MAT_IGNOS",    nome:"Ignos",     compra:25, vendi:19, ess:true},
+];
+const MAT = Object.fromEntries(MATERIALI.map(m=>[m.id,m]));
+const EROI = ["Vaerix","Brynn","Syrus","Galaden","Sorte","Kheli"];
+/* rank 1 = priorità massima */
+const RANK = {acq3:1, acq2:2, cos3:3, acq1:4, cos2:5, cos1:6};
+const RANK_LABEL = {acq3:"Acquisto ★★★", acq2:"Acquisto ★★", cos3:"Costruzione ★★★", acq1:"Acquisto ★", cos2:"Costruzione ★★", cos1:"Costruzione ★"};
+
+/* ── Stato ── */
+function defaultState(){
+  const zero = Object.fromEntries(MATERIALI.map(m=>[m.id,0]));
+  return {
+    monete: 0,
+    materiali: {...zero},
+    magazzino: {...zero},
+    ricette: {},
+    eroiSel: ["Vaerix","Brynn","Syrus","Galaden"],
+    impostazioni: { pesi:{acq3:8, acq2:5, cos3:4, acq1:3, cos2:2, cos1:1}, soglia:10 }
+  };
+}
+let state = defaultState();
+let gameCode = localStorage.getItem("descent_code") || null;
+let db=null, gameRef=null, online=false, lastPushed="";
+let currentPlan=null, optCtx=null;
+
+/* ── Persistenza & sync ── */
+function normalize(s){
+  const d = defaultState();
+  const out = {...d, ...s};
+  out.materiali = {...d.materiali, ...(s.materiali||{})};
+  out.magazzino = {...d.magazzino, ...(s.magazzino||{})};
+  out.ricette = s.ricette || {};
+  out.eroiSel = Array.isArray(s.eroiSel)&&s.eroiSel.length? s.eroiSel : d.eroiSel;
+  out.impostazioni = { pesi:{...d.impostazioni.pesi, ...((s.impostazioni||{}).pesi||{})},
+                       soglia:(s.impostazioni&&s.impostazioni.soglia!=null)? s.impostazioni.soglia : d.impostazioni.soglia };
+  Object.values(out.ricette).forEach(r=>{ r.materiali=r.materiali||{}; r.eroi=r.eroi||[]; });
+  return out;
+}
+function newCode(){
+  const c=()=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const blk=n=>Array.from({length:n},()=>c()[Math.floor(Math.random()*c().length)]).join("");
+  return "DSC-"+blk(4)+"-"+blk(4);
+}
+let saveTimer=null;
+function save(rerender=true){
+  localStorage.setItem("descent_state_"+gameCode, JSON.stringify(state));
+  if(online && gameRef){
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(()=>{ lastPushed=JSON.stringify(state); gameRef.set(state); }, 250);
+  }
+  if(rerender) renderAll();
+}
+function attachGame(code){
+  gameCode=code;
+  localStorage.setItem("descent_code", code);
+  const local = localStorage.getItem("descent_state_"+code);
+  state = normalize(local? JSON.parse(local) : defaultState());
+  if(gameRef) gameRef.off();
+  if(db){
+    gameRef = db.ref("partite/"+code);
+    gameRef.on("value", snap=>{
+      online=true; updateSyncPill();
+      if(snap.exists()){
+        const remote=JSON.stringify(snap.val());
+        if(remote!==lastPushed && remote!==JSON.stringify(state)){
+          state=normalize(snap.val());
+          localStorage.setItem("descent_state_"+code, remote);
+          renderAll();
+        }
+      } else { lastPushed=JSON.stringify(state); gameRef.set(state); }
+    }, ()=>{ online=false; updateSyncPill(); });
+  }
+  renderAll();
+}
+function initFirebase(){
+  try{
+    if(firebaseConfig && firebaseConfig.databaseURL){
+      firebase.initializeApp(firebaseConfig);
+      db=firebase.database();
+    }
+  }catch(e){ db=null; }
+  updateSyncPill();
+}
+function updateSyncPill(){
+  const p=document.getElementById("sync-pill");
+  if(db&&online){ p.textContent="● sincronizzata"; p.classList.add("on"); }
+  else if(db){ p.textContent="◌ connessione…"; p.classList.remove("on"); }
+  else { p.textContent="◌ locale"; p.classList.remove("on"); }
+}
+
+/* ── Utils ── */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid=()=>"R"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.style.display="block"; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display="none",2200); }
+function starsHtml(n, clickFn){
+  let h='<span class="stars'+(clickFn?' pick':'')+'">';
+  for(let k=1;k<=3;k++) h+='<span class="'+(k<=n?'':'off')+'"'+(clickFn?` onclick="${clickFn}(${k})"`:'')+'>★</span>';
+  return h+'</span>';
+}
+function matChips(reqs){
+  return Object.entries(reqs||{}).filter(([,q])=>q>0)
+    .map(([m,q])=>`<span class="chip">${q}× ${esc(MAT[m]?MAT[m].nome:m)}</span>`).join("");
+}
+function askConfirm(title, sub, bodyHtml, okLabel, okFn, okClass="teal"){
+  $("modals").insertAdjacentHTML("beforeend",
+   `<div class="overlay open" id="dyn-confirm"><div class="modal">
+      <h3>${title}</h3><p class="sub">${sub}</p>${bodyHtml||""}
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn" onclick="closeDyn('dyn-confirm')">Annulla</button>
+        <button class="btn ${okClass}" id="dyn-ok">${okLabel}</button>
+      </div></div></div>`);
+  $("dyn-ok").onclick=()=>{ closeDyn("dyn-confirm"); okFn(); };
+}
+function closeDyn(id){ const e=$(id); if(e) e.remove(); }
+function infoModal(title, sub, btnLabel, fn){
+  $("modals").insertAdjacentHTML("beforeend",
+   `<div class="overlay open" id="dyn-info"><div class="modal" style="text-align:center;">
+      <div style="font-size:42px; margin:6px 0 10px;">✅</div>
+      <h3>${title}</h3><p class="sub" style="margin-bottom:16px;">${sub}</p>
+      <button class="btn gold big" id="dyn-info-ok">${btnLabel}</button></div></div>`);
+  $("dyn-info-ok").onclick=()=>{ closeDyn("dyn-info"); if(fn)fn(); };
+}
+
+/* ── Navigazione ── */
+function goScreen(id, btn){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  $(id).classList.add("active");
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active", b.dataset.scr===id));
+  $("main").scrollTop=0;
+}
+
+/* ── Mutazioni quantità ── */
+function bump(kind, matId, d){
+  const tgt = kind==="own"? state.materiali : state.magazzino;
+  tgt[matId]=Math.max(0,(tgt[matId]||0)+d);
+  save();
+}
+function bumpCoins(d){ state.monete=Math.max(0,state.monete+d); save(); }
+function numModal(title, cur, fn){
+  closeDyn("dyn-num");
+  $("modals").insertAdjacentHTML("beforeend",
+   `<div class="overlay open" id="dyn-num"><div class="modal">
+      <h3>${title}</h3>
+      <input type="number" id="dyn-num-in" min="0" inputmode="numeric" value="${cur}" style="font-size:22px; text-align:center; margin-top:8px;">
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn" onclick="closeDyn('dyn-num')">Annulla</button>
+        <button class="btn gold" id="dyn-num-ok">✓ OK</button>
+      </div></div></div>`);
+  const inp=$("dyn-num-in");
+  setTimeout(()=>{ inp.focus(); inp.select(); },50);
+  const ok=()=>{ const n=parseInt(inp.value,10); if(isNaN(n)||n<0){ toast("Valore non valido"); return; } closeDyn("dyn-num"); fn(n); };
+  $("dyn-num-ok").onclick=ok;
+  inp.onkeydown=e=>{ if(e.key==="Enter") ok(); };
+}
+function editNum(kind, matId){
+  const cur = kind==="coins"? state.monete : (kind==="own"? state.materiali[matId] : state.magazzino[matId])||0;
+  const title = kind==="coins"? "Monete" : MAT[matId].nome + (kind==="own"? " — posseduti" : " — magazzino");
+  numModal(title, cur, n=>{
+    if(kind==="coins") state.monete=n;
+    else if(kind==="own") state.materiali[matId]=n;
+    else state.magazzino[matId]=n;
+    save();
+  });
+}
+function editCosto(id){
+  const r=state.ricette[id]; if(!r) return;
+  numModal("Costo di acquisto — "+esc(r.nome), r.costo, n=>{ r.costo=n; save(); });
+}
+
+/* ── Render ── */
+function matRows(kind){
+  const src = kind==="own"? state.materiali : state.magazzino;
+  const group = ess => MATERIALI.filter(m=>m.ess===ess).map(m=>
+    `<div class="mat-row"><span class="mat-name${m.ess?' ess':''}">${m.nome}</span>
+      <div class="stepper"><button onclick="bump('${kind}','${m.id}',-1)">−</button>
+      <span onclick="editNum('${kind}','${m.id}')">${src[m.id]||0}</span>
+      <button onclick="bump('${kind}','${m.id}',1)">+</button></div></div>`).join("");
+  return `<div class="card">${group(false)}</div><div class="card">${group(true)}</div>`;
+}
+function renderInventario(){
+  $("scr-inv").innerHTML = `
+    <h2>Monete</h2>
+    <div class="card row">
+      <span style="font-size:26px; font-weight:600; color:var(--gold); cursor:pointer;" onclick="editNum('coins')">🪙 ${state.monete}</span>
+      <div class="stepper"><button onclick="bumpCoins(-1)">−</button><span onclick="editNum('coins')">${state.monete}</span><button onclick="bumpCoins(1)">+</button></div>
+    </div>
+    <h2>Materiali posseduti</h2>
+    <p class="hint">Tocca − / + per aggiornare dopo la missione, oppure il numero per inserirlo direttamente.</p>
+    ${matRows("own")}`;
+}
+const nomeHtml=r=>esc(r.nome)+(r.pot?'<span style="color:var(--gold);"> +</span>':"");
+function prereqHint(r){
+  if(!r.pot || !r.prereq || r.stato==="costruita") return "";
+  if(r.prereq.tipo==="mancante")
+    return `<p class="hint" style="margin:6px 0 0; color:var(--coral);">⚠ versione normale non posseduta — costruzione esclusa dai consigli</p>`;
+  if(r.prereq.tipo==="ricetta"){
+    const N=state.ricette[r.prereq.id];
+    if(N && N.stato!=="costruita")
+      return `<p class="hint" style="margin:6px 0 0;">richiede costruita: ${esc(N.nome)}</p>`;
+  }
+  return "";
+}
+function recipeCardHtml(r, ctx){
+  const heroChips=r.eroi.map(h=>`<span class="chip hero">${esc(h)}</span>`).join("");
+  const ignored=r.stelle===0;
+  let actions="";
+  if(ctx==="mercato"){
+    actions = ignored? `<p class="hint" style="margin:8px 0 0;">0 stelle — ignorata dall'ottimizzatore</p>`
+      : `<div class="btn-row"><button class="btn teal" onclick="markAcquistata('${r.id}')">✓ Acquistata</button>
+         <button class="icon-btn" onclick="openRecipeForm('${r.id}')">✎</button>
+         <button class="icon-btn" onclick="deleteRecipe('${r.id}')">🗑</button></div>`;
+    if(ignored) actions=`<div class="btn-row"><button class="icon-btn" onclick="openRecipeForm('${r.id}')">✎</button><button class="icon-btn" onclick="deleteRecipe('${r.id}')">🗑</button></div>`+actions;
+  } else if(ctx==="acquistata"){
+    actions = `<div class="btn-row"><button class="btn gold" onclick="markCostruita('${r.id}')">⚒ Segna costruita</button>
+       <button class="icon-btn" onclick="openRecipeForm('${r.id}')">✎</button>
+       <button class="icon-btn" onclick="deleteRecipe('${r.id}')">🗑</button></div>`;
+  } else {
+    actions = `<div class="btn-row"><button class="btn danger" onclick="deleteRecipe('${r.id}')">🗑 Elimina dall'app</button></div>`;
+  }
+  const badge = ctx==="acquistata"? `<span class="badge owned">ACQUISTATA</span>` : ctx==="costruita"? `<span class="badge built">COSTRUITA</span>` : starsHtml(r.stelle, `setStelle_${r.id}`);
+  const starsLine = ctx==="mercato"? "" : `${starsHtml(r.stelle, ctx==="costruita"?null:`setStelle_${r.id}`)}&nbsp;`;
+  return `<div class="card recipe-card${ignored&&ctx==="mercato"?" ignored":""}"${ctx==="costruita"?' style="opacity:.7;"':''}>
+    <div class="row"><h3>${nomeHtml(r)}</h3>${badge}</div>
+    <div class="meta">${starsLine}${ctx==="mercato"?`<span class="chip coin" style="cursor:pointer;" onclick="editCosto('${r.id}')">🪙 ${r.costo}</span>`:""}${matChips(r.materiali)}</div>
+    <div>${heroChips}</div>${prereqHint(r)}${actions}</div>`;
+}
+function bindStarSetters(){
+  Object.values(state.ricette).forEach(r=>{
+    window["setStelle_"+r.id]=(k)=>{ r.stelle = (r.stelle===k? k-1 : k); save(); };
+  });
+}
+function renderMercato(){
+  const rs=Object.values(state.ricette).filter(r=>r.stato==="mercato");
+  rs.sort((a,b)=>b.stelle-a.stelle || a.nome.localeCompare(b.nome));
+  $("scr-mkt").innerHTML = `
+    <h2>Magazzino materiali</h2>
+    <p class="hint">Quantità disponibili ora nel mercato.</p>
+    ${matRows("mkt")}
+    <div class="row" style="margin-top:18px;">
+      <h2 style="margin:0;">Ricette nel mercato</h2>
+      <button class="btn gold" onclick="openRecipeForm(null,'mercato')">+ Nuova ricetta</button>
+    </div>
+    <p class="hint" style="margin-top:6px;">Acquistabili solo in questa fase. Tocca le stelle per la priorità (ritocca l'ultima per scendere fino a 0).</p>
+    ${rs.length? rs.map(r=>recipeCardHtml(r,"mercato")).join("") : `<p class="empty">Nessuna ricetta nel mercato. Aggiungile con "+ Nuova ricetta".</p>`}`;
+}
+function renderRicette(){
+  const acq=Object.values(state.ricette).filter(r=>r.stato==="acquistata").sort((a,b)=>b.stelle-a.stelle||a.nome.localeCompare(b.nome));
+  const cos=Object.values(state.ricette).filter(r=>r.stato==="costruita").sort((a,b)=>a.nome.localeCompare(b.nome));
+  $("scr-own").innerHTML = `
+    <div class="row">
+      <h2 style="margin:0;">Le nostre ricette</h2>
+      <button class="btn gold" onclick="openRecipeForm(null,'acquistata')">+ Nuova ricetta</button>
+    </div>
+    <p class="hint" style="margin-top:6px;">Acquistate: costruibili per sempre. Le costruite si possono eliminare.</p>
+    ${acq.length? acq.map(r=>recipeCardHtml(r,"acquistata")).join("") : `<p class="empty">Nessuna ricetta acquistata.</p>`}
+    ${cos.length? `<h2>Costruite</h2>`+cos.map(r=>recipeCardHtml(r,"costruita")).join("") : ""}`;
+}
+function renderOttimizza(){
+  const sel=state.eroiSel;
+  $("scr-opt").innerHTML = `
+    <div id="opt-step1">
+      <h2>Chi parte per la missione?</h2>
+      <p class="hint">Seleziona i 4 eroi: le costruzioni suggerite riguarderanno solo loro. Gli acquisti valgono per tutti.</p>
+      <div class="heroes-grid">${EROI.map(h=>`<div class="hero-card${sel.includes(h)?" sel":""}" onclick="toggleHero('${h}')">${h}</div>`).join("")}</div>
+      <p class="hint" style="text-align:center; margin-top:10px; ${sel.length===4?'':'color:var(--coral);'}">${sel.length} / 4 selezionati</p>
+      <button class="btn gold big" id="btn-elab" ${sel.length===4?"":"disabled"} onclick="runOptimizer()">⚡ Elabora consigli</button>
+    </div>
+    <div id="opt-plan"></div>`;
+}
+function renderImpostazioni(){
+  const p=state.impostazioni.pesi;
+  const hasUndo = !!localStorage.getItem("descent_undo_"+gameCode);
+  $("scr-set").innerHTML = `
+    <h2>Pesi delle azioni</h2>
+    <p class="hint">Modificabili se l'app fa troppe (o troppo poche) domande. Rispetta la gerarchia: valori decrescenti dall'alto in basso.</p>
+    <div class="card settings-grid">
+      ${["acq3","acq2","cos3","acq1","cos2","cos1"].map(k=>
+        `<span>${RANK_LABEL[k]}</span><input type="number" min="0" value="${p[k]}" onchange="setPeso('${k}',this.value)">`).join("")}
+    </div>
+    <h2>Popup di scelta</h2>
+    <div class="card settings-grid">
+      <span>Soglia piani equivalenti</span><input type="number" min="0" max="100" value="${state.impostazioni.soglia}" onchange="setSoglia(this.value)">
+    </div>
+    <p class="hint">% di distanza entro cui due piani sono "quasi pari" e l'app chiede a voi.</p>
+    <h2>Partita condivisa</h2>
+    <div class="card">
+      <div class="summary-row"><span>Codice partita</span><b>${esc(gameCode)}</b></div>
+      <div class="summary-row"><span>Sincronizzazione</span><b>${db?(online?"attiva (Firebase)":"in connessione…"):"non configurata — solo locale"}</b></div>
+      <div class="btn-row"><button class="btn" onclick="copyCode()">⧉ Copia codice</button><button class="btn" onclick="newGame()">↻ Nuova partita</button></div>
+      <label>Collega a una partita esistente</label>
+      <div class="inline"><input type="text" id="join-code" placeholder="DSC-XXXX-XXXX"><button class="btn" onclick="joinGame()">Collega</button></div>
+    </div>
+    ${db? "" : `<p class="hint">Per condividere i dati fra dispositivi, incolla la configurazione Firebase nel file index.html (blocco evidenziato in cima allo script).</p>`}
+    <h2>Sicurezza</h2>
+    <div class="card">
+      <button class="btn big" ${hasUndo?"":"disabled"} onclick="undoApply()">↩ Annulla ultima applicazione piano</button>
+      <p class="hint" style="margin:8px 0 0;">Ripristina lo stato precedente all'ultimo "Applica piano" (salvato su questo dispositivo).</p>
+    </div>`;
+}
+function renderAll(){
+  bindStarSetters();
+  renderInventario(); renderMercato(); renderRicette(); renderOttimizza(); renderImpostazioni();
+  updateSyncPill();
+}
+
+/* ── Impostazioni ── */
+function setPeso(k,v){ const n=parseFloat(v); if(!isNaN(n)&&n>=0){ state.impostazioni.pesi[k]=n; save(false);} }
+function setSoglia(v){ const n=parseFloat(v); if(!isNaN(n)&&n>=0){ state.impostazioni.soglia=n; save(false);} }
+function copyCode(){ navigator.clipboard.writeText(gameCode).then(()=>toast("Codice copiato")).catch(()=>prompt("Copia il codice:",gameCode)); }
+function newGame(){
+  askConfirm("Nuova partita?","Verrà creato un nuovo codice con dati azzerati. La partita attuale resta raggiungibile con il suo codice.","","✓ Crea", ()=>{
+    const c=newCode(); state=defaultState(); attachGame(c); save(); toast("Nuova partita: "+c);
+  });
+}
+function joinGame(){
+  const c=($("join-code").value||"").trim().toUpperCase();
+  if(!c){ toast("Inserisci un codice"); return; }
+  localStorage.removeItem("descent_state_"+c);
+  attachGame(c); toast("Collegato a "+c);
+}
+
+/* ── Eroi ── */
+function toggleHero(h){
+  const i=state.eroiSel.indexOf(h);
+  if(i>=0) state.eroiSel.splice(i,1); else state.eroiSel.push(h);
+  save();
+}
+
+/* ── Form ricetta ── */
+function openRecipeForm(id, newStato){
+  const r = id? state.ricette[id] : null;
+  const showCosto = r? r.stato==="mercato" : newStato==="mercato";
+  const heroRows=(r? r.eroi : [EROI[0]]).map((h,i)=>heroRowHtml(h,i>0)).join("");
+  const matRowsH=(r? Object.entries(r.materiali) : []).map(([m,q])=>matRowHtml(m,q)).join("");
+  const pot = r? !!r.pot : false;
+  const preTipo = (r&&r.prereq)? r.prereq.tipo : "posseduta";
+  const preId = (r&&r.prereq&&r.prereq.id)? r.prereq.id : "";
+  const others=Object.values(state.ricette).filter(x=>x.id!==id);
+  const preOpts=others.map(x=>`<option value="${x.id}" ${x.id===preId?"selected":""}>${esc(x.nome)}${x.pot?" +":""}</option>`).join("");
+  $("modals").insertAdjacentHTML("beforeend", `
+  <div class="overlay open" id="modal-recipe"><div class="modal">
+    <h3>${r? "Modifica ricetta":"Nuova ricetta"}</h3>
+    <p class="sub">${r? "" : (newStato==="mercato"? "Inserita nel Mercato della campagna in corso." : "Inserita direttamente tra le vostre ricette (acquistata).")}</p>
+    <label>Nome</label><input type="text" id="f-nome" value="${r?esc(r.nome):""}" placeholder="es. Martello delle Ere">
+    ${showCosto? `<label>Costo di acquisto (monete)</label><input type="number" id="f-costo" min="0" inputmode="numeric" value="${r?r.costo:""}" placeholder="45">`:""}
+    <label>Priorità</label>
+    <div id="f-stars" class="stars pick" style="font-size:26px;"></div>
+    <p class="hint" style="margin:2px 0 0;">tocca — ritocca l'ultima stella per scendere fino a 0 (= mai)</p>
+    <div class="checkline" style="margin-top:14px;">
+      <input type="checkbox" id="f-pot" ${pot?"checked":""} style="width:auto;" onchange="togglePotUI()">
+      <label for="f-pot" style="margin:0; color:var(--text);">Versione potenziata <b style="color:var(--gold);">+</b></label>
+    </div>
+    <div id="f-prereq" style="display:${pot?"block":"none"}; margin-left:4px;">
+      <label>Versione normale</label>
+      <select id="f-prereq-tipo" onchange="togglePotUI()">
+        <option value="posseduta" ${preTipo==="posseduta"?"selected":""}>Già posseduta</option>
+        <option value="mancante" ${preTipo==="mancante"?"selected":""}>Non posseduta — blocca la costruzione</option>
+        <option value="ricetta" ${preTipo==="ricetta"?"selected":""} ${others.length?"":"disabled"}>È una ricetta nell'app…</option>
+      </select>
+      <select id="f-prereq-id" style="display:${pot&&preTipo==="ricetta"?"block":"none"}; margin-top:8px;">${preOpts}</select>
+    </div>
+    <label>Eroi (massimo 4)</label>
+    <div id="f-heroes">${heroRows}</div>
+    <button class="btn" style="margin-top:8px;" id="f-add-hero" onclick="addHeroRow()">+ Aggiungi eroe</button>
+    <label>Materiali per la costruzione</label>
+    <div id="f-mats">${matRowsH}</div>
+    <button class="btn" onclick="addMatRow()">+ Aggiungi materiale</button>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn" onclick="closeDyn('modal-recipe')">Annulla</button>
+      <button class="btn gold" onclick="saveRecipe('${id||""}','${newStato||""}')">Salva ricetta</button>
+    </div></div></div>`);
+  window._fStars = r? r.stelle : 2;
+  drawFormStars();
+  syncAddHeroBtn();
+}
+function togglePotUI(){
+  const pot=$("f-pot").checked;
+  $("f-prereq").style.display = pot? "block":"none";
+  $("f-prereq-id").style.display = (pot && $("f-prereq-tipo").value==="ricetta")? "block":"none";
+}
+function drawFormStars(){
+  let h="";
+  for(let k=1;k<=3;k++) h+=`<span class="${k<=window._fStars?'':'off'}" onclick="window._fStars=(window._fStars===${k}?${k-1}:${k});drawFormStars()">★</span>`;
+  $("f-stars").innerHTML=h;
+}
+function heroRowHtml(selVal, removable){
+  const opts=EROI.map(h=>`<option ${h===selVal?"selected":""}>${h}</option>`).join("");
+  return `<div class="inline hero-sel" style="margin-top:8px;"><select style="flex:1;">${opts}</select>${removable?'<button class="icon-btn" onclick="this.parentElement.remove();syncAddHeroBtn()">🗑</button>':""}</div>`;
+}
+function matRowHtml(matId, qty){
+  const opts=MATERIALI.map(m=>`<option value="${m.id}" ${m.id===matId?"selected":""}>${m.nome}</option>`).join("");
+  return `<div class="inline mat-sel" style="margin-bottom:8px;"><select style="flex:1;">${opts}</select><input type="number" min="1" value="${qty||1}" style="width:64px;"><button class="icon-btn" onclick="this.parentElement.remove()">🗑</button></div>`;
+}
+function addHeroRow(){ if(document.querySelectorAll("#f-heroes .hero-sel").length>=4) return; $("f-heroes").insertAdjacentHTML("beforeend", heroRowHtml(EROI[1],true)); syncAddHeroBtn(); }
+function syncAddHeroBtn(){ const b=$("f-add-hero"); if(b) b.style.display = document.querySelectorAll("#f-heroes .hero-sel").length>=4? "none":"inline-block"; }
+function addMatRow(){ $("f-mats").insertAdjacentHTML("beforeend", matRowHtml(MATERIALI[0].id,1)); }
+function saveRecipe(id, newStato){
+  const nome=($("f-nome").value||"").trim();
+  if(!nome){ toast("Il nome è obbligatorio"); return; }
+  const showCosto = id? (state.ricette[id]&&state.ricette[id].stato==="mercato") : newStato==="mercato";
+  const costo = showCosto? parseInt($("f-costo").value,10) : 0;
+  const eroi=[...new Set([...document.querySelectorAll("#f-heroes select")].map(s=>s.value))];
+  if(!eroi.length){ toast("Serve almeno un eroe"); return; }
+  const materiali={};
+  document.querySelectorAll("#f-mats .mat-sel").forEach(row=>{
+    const m=row.querySelector("select").value;
+    const q=parseInt(row.querySelector("input").value,10);
+    if(!isNaN(q)&&q>0) materiali[m]=(materiali[m]||0)+q;
+  });
+  const pot=$("f-pot").checked;
+  let prereq=null;
+  if(pot){
+    const t=$("f-prereq-tipo").value;
+    if(t==="ricetta"){
+      const pid=$("f-prereq-id").value;
+      if(pid) prereq={tipo:"ricetta", id:pid};
+      else { prereq={tipo:"posseduta"}; toast("Nessuna ricetta collegabile: impostata come già posseduta"); }
+    } else prereq={tipo:t};
+  }
+  if(id && state.ricette[id]){
+    const r=state.ricette[id];
+    r.nome=nome; r.eroi=eroi; r.materiali=materiali; r.stelle=window._fStars;
+    r.pot=pot; r.prereq=prereq;
+    if(r.stato==="mercato") r.costo = isNaN(costo)?0:Math.max(0,costo);
+  } else {
+    if(showCosto && (isNaN(costo)||costo<0)){ toast("Costo di acquisto non valido"); return; }
+    const rid=uid();
+    state.ricette[rid]={id:rid, nome, costo:showCosto?costo:0, stelle:window._fStars, eroi, materiali,
+                        stato:newStato==="acquistata"?"acquistata":"mercato", pot, prereq};
+  }
+  closeDyn("modal-recipe"); save(); toast("Ricetta salvata");
+}
+function deleteRecipe(id){
+  const r=state.ricette[id]; if(!r) return;
+  askConfirm("Eliminare la ricetta?", esc(r.nome)+" verrà rimossa definitivamente.","","🗑 Elimina",()=>{ delete state.ricette[id]; save(); },"danger");
+}
+function markAcquistata(id){
+  const r=state.ricette[id]; if(!r) return;
+  askConfirm("Segnare come acquistata?",
+    esc(r.nome)+" uscirà dal Mercato e finirà tra le vostre ricette.",
+    `<div class="checkline"><input type="checkbox" id="chk-coins" checked style="width:auto;"><label for="chk-coins" style="margin:0;">Scala ${r.costo} monete dall'inventario</label></div>`,
+    "✓ Conferma",()=>{
+      r.stato="acquistata";
+      if(window._chkCoins) state.monete=Math.max(0,state.monete-r.costo);
+      save(); toast("Ricetta acquistata");
+    });
+  const chk=$("chk-coins"); window._chkCoins=true;
+  if(chk) chk.onchange=()=>{ window._chkCoins=chk.checked; };
+}
+function markCostruita(id){
+  const r=state.ricette[id]; if(!r) return;
+  const mats=Object.entries(r.materiali).filter(([,q])=>q>0);
+  const enough=mats.every(([m,q])=>(state.materiali[m]||0)>=q);
+  const linked = (r.pot&&r.prereq&&r.prereq.tipo==="ricetta")? state.ricette[r.prereq.id] : null;
+  askConfirm("Segnare come costruita?",
+    esc(r.nome)+(mats.length?" richiede: "+mats.map(([m,q])=>q+"× "+MAT[m].nome).join(", ")+".":"")
+      +(linked? ` La versione normale collegata (${esc(linked.nome)}) verrà rimossa dall'app.`:""),
+    mats.length? `<div class="checkline"><input type="checkbox" id="chk-mats" ${enough?"checked":""} style="width:auto;"><label for="chk-mats" style="margin:0;">Scala i materiali dall'inventario${enough?"":" (⚠ non tutti disponibili)"}</label></div>`:"",
+    "⚒ Conferma",()=>{
+      r.stato="costruita";
+      if(window._chkMats) mats.forEach(([m,q])=>{ state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q); });
+      transformIfPot(r);
+      save(); toast("Ricetta costruita");
+    },"gold");
+  const chk=$("chk-mats"); window._chkMats=enough&&mats.length>0;
+  if(chk) chk.onchange=()=>{ window._chkMats=chk.checked; };
+}
+
+/* ═══════════════ OTTIMIZZATORE ═══════════════ */
+function usefulness(matId){
+  let u=0;
+  Object.values(state.ricette).forEach(r=>{
+    if(r.stelle>0 && r.stato!=="costruita" && r.materiali[matId]) u += r.stelle*r.materiali[matId];
+  });
+  return u;
+}
+function buildEligible(r){
+  if(r.stelle<=0) return false;
+  if(!r.eroi.some(h=>state.eroiSel.includes(h))) return false;
+  if(r.pot && r.prereq && r.prereq.tipo==="mancante") return false;
+  return true;
+}
+/* chiave dell'azione di costruzione da cui dipende (normale non ancora costruita), o null */
+function buildDepKey(c){
+  const r=c.r;
+  if(r.pot && r.prereq && r.prereq.tipo==="ricetta"){
+    const N=state.ricette[r.prereq.id];
+    if(N && N.stato!=="costruita") return "B_"+N.id;
+  }
+  return null;
+}
+function getCandidates(){
+  const p=state.impostazioni.pesi;
+  const cands=[];
+  Object.values(state.ricette).forEach(r=>{
+    if(r.stelle<=0) return;
+    const suff=r.pot?" +":"";
+    if(r.stato==="mercato"){
+      const k="acq"+r.stelle;
+      cands.push({key:"A_"+r.id, tipo:"acquisto", r, rank:RANK[k], peso:p[k], label:`Acquista: ${r.nome}${suff} (${"★".repeat(r.stelle)})`});
+    }
+    if((r.stato==="mercato"||r.stato==="acquistata") && buildEligible(r)){
+      const k="cos"+r.stelle;
+      cands.push({key:"B_"+r.id, tipo:"costruzione", r, rank:RANK[k], peso:p[k], label:`Costruisci: ${r.nome}${suff} (${"★".repeat(r.stelle)})`});
+    }
+  });
+  cands.sort((a,b)=>a.rank-b.rank || b.peso-a.peso);
+  return cands.slice(0,16); /* limite di sicurezza per la ricerca esaustiva */
+}
+function evalSubset(cands, mask, include, exclude){
+  const chosen=[];
+  for(let i=0;i<cands.length;i++) if(mask&(1<<i)) chosen.push(cands[i]);
+  const keys=new Set(chosen.map(c=>c.key));
+  for(const k of include) if(!keys.has(k)) return null;
+  for(const k of exclude) if(keys.has(k)) return null;
+  /* dipendenze: la costruzione di una ricetta nel mercato richiede il suo acquisto
+     nello stesso piano; la potenziata richiede la costruzione della normale collegata */
+  for(const c of chosen){
+    if(c.tipo!=="costruzione") continue;
+    if(c.r.stato==="mercato" && !keys.has("A_"+c.r.id)) return null;
+    const dep=buildDepKey(c);
+    if(dep && !keys.has(dep)) return null;
+  }
+  const need={};
+  chosen.filter(c=>c.tipo==="costruzione").forEach(c=>{
+    Object.entries(c.r.materiali).forEach(([m,q])=>{ need[m]=(need[m]||0)+q; });
+  });
+  const buys={}; let matCost=0;
+  for(const [m,q] of Object.entries(need)){
+    const short=Math.max(0, q-(state.materiali[m]||0));
+    if(short > (state.magazzino[m]||0)) return null;
+    if(short>0){ buys[m]=short; matCost+=short*MAT[m].compra; }
+  }
+  const coinCost = matCost + chosen.filter(c=>c.tipo==="acquisto").reduce((s,c)=>s+c.r.costo,0);
+  let deficit = coinCost - state.monete;
+  const sells={}; let sellGain=0;
+  if(deficit>0){
+    const pool=MATERIALI.map(m=>{
+      const reserved=Math.min(state.materiali[m.id]||0, need[m.id]||0);
+      return {id:m.id, free:(state.materiali[m.id]||0)-reserved, vendi:m.vendi, u:usefulness(m.id)};
+    }).filter(x=>x.free>0).sort((a,b)=>a.u-b.u || a.vendi-b.vendi);
+    const sold=[]; let gain=0;
+    outer: for(const x of pool){
+      for(let i=0;i<x.free;i++){
+        if(gain>=deficit) break outer;
+        sold.push(x); gain+=x.vendi;
+      }
+    }
+    if(gain<deficit) return null;
+    /* raffinamento: l'ultima unità venduta (che può eccedere il fabbisogno)
+       viene sostituita con l'unità più economica sufficiente a coprire il residuo */
+    const last=sold[sold.length-1];
+    const resid=deficit-(gain-last.vendi);
+    const counts={}; sold.forEach(s=>counts[s.id]=(counts[s.id]||0)+1);
+    counts[last.id]--;
+    let best=last;
+    for(const x of pool){
+      const avail=x.free-(counts[x.id]||0);
+      if(avail>0 && x.vendi>=resid && (x.vendi<best.vendi || (x.vendi===best.vendi && x.u<best.u))) best=x;
+    }
+    if(best!==last){ sold[sold.length-1]=best; gain+=best.vendi-last.vendi; }
+    sold.forEach(s=>{ sells[s.id]=(sells[s.id]||0)+1; });
+    sellGain=gain;
+  }
+  const value=chosen.reduce((s,c)=>s+c.peso,0);
+  return {actions:chosen, keys, buys, sells, value,
+          coinsAfter: state.monete + sellGain - coinCost,
+          spend: coinCost - sellGain};
+}
+function searchPlans(include, exclude){
+  const cands=getCandidates();
+  const plans=[]; const seen=new Set();
+  const N=1<<cands.length;
+  for(let mask=1; mask<N; mask++){
+    const pl=evalSubset(cands, mask, include, exclude);
+    if(!pl) continue;
+    const sig=[...pl.keys].sort().join("|");
+    if(seen.has(sig)) continue;
+    seen.add(sig);
+    plans.push(pl);
+  }
+  plans.sort((a,b)=>b.value-a.value || b.coinsAfter-a.coinsAfter || a.actions.length-b.actions.length);
+  return plans;
+}
+function bestRankOf(actions){ return actions.length? Math.min(...actions.map(a=>a.rank)) : 99; }
+function diffActions(a,b){ return a.actions.filter(x=>!b.keys.has(x.key)); }
+function findChallenger(plans){
+  if(plans.length<2) return null;
+  const best=plans[0];
+  const soglia=state.impostazioni.soglia;
+  let rankCh=null, nearCh=null;
+  for(let i=1;i<plans.length;i++){
+    const alt=plans[i];
+    const exAlt=diffActions(alt,best), exBest=diffActions(best,alt);
+    if(!exAlt.length || !exBest.length) continue;
+    if(!rankCh && bestRankOf(exAlt) < bestRankOf(exBest)) rankCh=alt;
+    if(!nearCh && best.value>0 && (best.value-alt.value)/best.value*100 <= soglia) nearCh=alt;
+    if(rankCh) break;
+  }
+  return rankCh? {plan:rankCh, tipo:"rango"} : (nearCh? {plan:nearCh, tipo:"soglia"} : null);
+}
+function runOptimizer(){
+  if(state.eroiSel.length!==4){ toast("Seleziona esattamente 4 eroi"); return; }
+  optCtx={include:new Set(), exclude:new Set(), step:0};
+  optimizerLoop();
+}
+function optimizerLoop(){
+  const plans=searchPlans(optCtx.include, optCtx.exclude);
+  if(!plans.length){ showPlan(null); return; }
+  const ch=findChallenger(plans);
+  if(!ch || optCtx.step>=6){ showPlan(plans[0]); return; }
+  optCtx.step++;
+  showChoicePopup(plans[0], ch.plan, ch.tipo);
+}
+function planOptionHtml(pl, idx){
+  const items=pl.actions.map(a=>`<li>· ${esc(a.label)}</li>`).join("");
+  return `<div class="opt-card" onclick="chooseOption(${idx})">
+    <b>${idx===0?"A":"B"} · ${pl.actions.length} azion${pl.actions.length===1?"e":"i"}</b>
+    <ul>${items}</ul>
+    <div class="val">Valore ${pl.value} · spesa netta 🪙 ${pl.spend} · restano 🪙 ${pl.coinsAfter}</div></div>`;
+}
+let _optA=null,_optB=null;
+function showChoicePopup(a,b,tipo){
+  _optA=a; _optB=b;
+  const title = tipo==="rango"? "conflitto di priorità" : `piani quasi pari (< ${state.impostazioni.soglia}%)`;
+  const sub = tipo==="rango"? "Più azioni \"piccole\" valgono più di una \"grande\": decidete voi."
+                            : "Due strade con valore molto vicino: decidete voi.";
+  closeDyn("modal-choice");
+  $("modals").insertAdjacentHTML("beforeend",
+   `<div class="overlay open" id="modal-choice"><div class="modal">
+      <h3>Scelta ${optCtx.step} — ${title}</h3><p class="sub">${sub}</p>
+      ${planOptionHtml(a,0)}${planOptionHtml(b,1)}
+      <button class="btn big" onclick="closeDyn('modal-choice')">✕ Interrompi elaborazione</button>
+    </div></div>`);
+}
+function chooseOption(idx){
+  const chosen=idx===0?_optA:_optB, other=idx===0?_optB:_optA;
+  diffActions(chosen,other).forEach(a=>optCtx.include.add(a.key));
+  diffActions(other,chosen).forEach(a=>optCtx.exclude.add(a.key));
+  closeDyn("modal-choice");
+  optimizerLoop();
+}
+/* ordina le costruzioni: prima le normali, poi le potenziate che ne dipendono */
+function orderBuilds(builds){
+  const keys=new Set(builds.map(b=>b.key));
+  const placed=new Set(); const out=[];
+  let pool=[...builds].sort((a,b)=>a.rank-b.rank);
+  while(pool.length){
+    let progressed=false;
+    for(let i=0;i<pool.length;i++){
+      const dep=buildDepKey(pool[i]);
+      if(!dep || !keys.has(dep) || placed.has(dep)){
+        out.push(pool[i]); placed.add(pool[i].key); pool.splice(i,1); progressed=true; break;
+      }
+    }
+    if(!progressed){ out.push(...pool); break; }
+  }
+  return out;
+}
+function planStepsHtml(pl){
+  let n=0, html="";
+  const step=(txt,sub,amt,pos)=>{ n++; return `<div class="plan-step"><div class="plan-n">${n}</div><div><b>${txt}</b>${sub?`<br><span class="hint" style="margin:0;">${sub}</span>`:""}</div><span class="amt ${pos?"pos":"neg"}">${pos?"+":"−"}${amt}</span></div>`; };
+  Object.entries(pl.sells).forEach(([m,q])=>{ html+=step(`Vendi ${q}× ${MAT[m].nome}`,"per coprire le spese", q*MAT[m].vendi, true); });
+  Object.entries(pl.buys).forEach(([m,q])=>{ html+=step(`Compra ${q}× ${MAT[m].nome}`,"dal magazzino, per le costruzioni", q*MAT[m].compra, false); });
+  pl.actions.filter(a=>a.tipo==="acquisto").sort((a,b)=>a.rank-b.rank).forEach(a=>{ html+=step(esc(a.label),"", a.r.costo, false); });
+  orderBuilds(pl.actions.filter(a=>a.tipo==="costruzione")).forEach(a=>{
+    const per=a.r.eroi.filter(h=>state.eroiSel.includes(h)).join(", ");
+    const dep=buildDepKey(a);
+    const depNote = dep? " · dopo la costruzione della versione normale" : "";
+    html+=step(esc(a.label), "per "+esc(per)+depNote, 0, false).replace(`<span class="amt neg">−0</span>`,`<span class="amt" style="color:var(--muted);">⚒</span>`);
+  });
+  return html;
+}
+function showPlan(pl){
+  currentPlan=pl;
+  const el=$("opt-plan");
+  $("opt-step1").style.display="none";
+  if(!pl || !pl.actions.length){
+    el.innerHTML=`<h2>Piano consigliato</h2>
+      <p class="empty">Nessuna azione consigliata con le risorse attuali.<br>Controlla monete, magazzino e priorità (le ricette a 0 stelle sono ignorate).</p>
+      <button class="btn big" onclick="renderOttimizza()">↺ Ricomincia</button>`;
+    return;
+  }
+  el.innerHTML=`<h2>Piano consigliato</h2>
+    <p class="hint">Ordine di esecuzione al tavolo. Valore totale del piano: <b style="color:var(--gold);">${pl.value} punti</b>.</p>
+    <div class="card">${planStepsHtml(pl)}</div>
+    <div class="card">
+      <div class="summary-row"><span>Monete: prima → dopo</span><b>${state.monete} → 🪙 ${pl.coinsAfter}</b></div>
+      <div class="summary-row"><span>Azioni</span><b>${pl.actions.filter(a=>a.tipo==="acquisto").length} acquisti · ${pl.actions.filter(a=>a.tipo==="costruzione").length} costruzioni</b></div>
+    </div>
+    <button class="btn teal big" onclick="confirmApplyPlan()">✓ Applica piano (aggiorna inventario)</button>
+    <button class="btn big" onclick="renderOttimizza()">↺ Ricomincia</button>`;
+}
+function confirmApplyPlan(){
+  const pl=currentPlan; if(!pl) return;
+  const nAz = pl.actions.length + Object.keys(pl.sells).length + Object.keys(pl.buys).length;
+  const acq=pl.actions.filter(a=>a.tipo==="acquisto").map(a=>esc(a.r.nome)+(a.r.pot?" +":"")).join(", ");
+  const cos=pl.actions.filter(a=>a.tipo==="costruzione").map(a=>esc(a.r.nome)+(a.r.pot?" +":"")).join(", ");
+  askConfirm("Applicare il piano?","L'inventario, il mercato e le ricette verranno aggiornati automaticamente.",
+    `<div class="card" style="margin-bottom:4px;">
+      <div class="summary-row"><span>Azioni da eseguire</span><b>${nAz}</b></div>
+      <div class="summary-row"><span>Monete</span><b>${state.monete} → 🪙 ${pl.coinsAfter}</b></div>
+      ${acq?`<div class="summary-row"><span>Ricette acquistate</span><b>${acq}</b></div>`:""}
+      ${cos?`<div class="summary-row"><span>Ricette costruite</span><b>${cos}</b></div>`:""}
+    </div>`,
+    "✓ Conferma", applyPlan);
+}
+/* quando viene costruita una potenziata collegata a una normale, la normale si trasforma e sparisce */
+function transformIfPot(r){
+  if(r.pot && r.prereq && r.prereq.tipo==="ricetta"){
+    const N=state.ricette[r.prereq.id];
+    if(N) delete state.ricette[N.id];
+    r.prereq={tipo:"posseduta"};
+  }
+}
+function applyPlan(){
+  const pl=currentPlan; if(!pl) return;
+  localStorage.setItem("descent_undo_"+gameCode, JSON.stringify(state));
+  Object.entries(pl.sells).forEach(([m,q])=>{
+    state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q);
+    state.magazzino[m]=(state.magazzino[m]||0)+q;
+    state.monete+=q*MAT[m].vendi;
+  });
+  Object.entries(pl.buys).forEach(([m,q])=>{
+    state.monete-=q*MAT[m].compra;
+    state.magazzino[m]=Math.max(0,(state.magazzino[m]||0)-q);
+    state.materiali[m]=(state.materiali[m]||0)+q;
+  });
+  pl.actions.filter(a=>a.tipo==="acquisto").forEach(a=>{
+    state.monete-=a.r.costo;
+    if(state.ricette[a.r.id]) state.ricette[a.r.id].stato="acquistata";
+  });
+  orderBuilds(pl.actions.filter(a=>a.tipo==="costruzione")).forEach(a=>{
+    const r=state.ricette[a.r.id]; if(!r) return;
+    Object.entries(r.materiali).forEach(([m,q])=>{ state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q); });
+    r.stato="costruita";
+    transformIfPot(r);
+  });
+  state.monete=Math.max(0,state.monete);
+  currentPlan=null;
+  save();
+  infoModal("Piano applicato","Tutti i dati sono stati aggiornati"+(db&&online?" e sincronizzati.":"."),"Vai all'inventario →",()=>goScreen("scr-inv"));
+}
+function undoApply(){
+  const bak=localStorage.getItem("descent_undo_"+gameCode);
+  if(!bak){ toast("Nessuna applicazione da annullare"); return; }
+  askConfirm("Annullare l'ultima applicazione?","Lo stato tornerà a com'era prima dell'ultimo \"Applica piano\".","","↩ Ripristina",()=>{
+    state=normalize(JSON.parse(bak));
+    localStorage.removeItem("descent_undo_"+gameCode);
+    save(); toast("Stato ripristinato");
+  });
+}
+
+/* ── Avvio ── */
+initFirebase();
+if(!gameCode) gameCode=newCode();
+attachGame(gameCode);
+</script>
+</body>
+</html>
