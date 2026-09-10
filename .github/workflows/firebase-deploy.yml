@@ -1,0 +1,24 @@
+name: Deploy to Firebase Hosting (tag)
+
+# Deploya sul canale "live" ogni volta che viene pushato un tag di versione
+# tipo v1.0.0, v1.2.3, ecc.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DESCENT_EXCEL_MA_MEGLIO }}
+          projectId: descent-excel-ma-meglio
+          channelId: live
