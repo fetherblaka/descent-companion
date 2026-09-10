@@ -410,7 +410,6 @@ function renderRicette(){
       <h2 style="margin:0;">Le nostre ricette</h2>
       <button class="btn gold" onclick="openRecipeForm(null,'acquistata')">+ Nuova ricetta</button>
     </div>
-    <p class="hint" style="margin-top:6px;">Acquistate: costruibili per sempre. Le costruite si possono eliminare.</p>
     ${acq.length? acq.map(r=>recipeCardHtml(r,"acquistata")).join("") : `<p class="empty">Nessuna ricetta acquistata.</p>`}
     ${cos.length? `<h2>Costruite</h2>`+cos.map(r=>recipeCardHtml(r,"costruita")).join("") : ""}`;
 }
