@@ -159,18 +159,22 @@ const MATERIALI = [
   {id:"MAT_IGNOS",    nome:"Ignos",     compra:25, vendi:19, ess:true},
 ];
 const MAT = Object.fromEntries(MATERIALI.map(m=>[m.id,m]));
-const EROI = ["Vaerix","Brynn","Syrus","Galaden","Sorte","Kheli"];
+const EROI = ["Vaerix","Brynn","Syrus","Galaden","Sorte","Kehli"];
 /* rank 1 = priorità massima */
 const RANK = {acq3:1, acq2:2, cos3:3, acq1:4, cos2:5, cos1:6};
 const RANK_LABEL = {acq3:"Acquisto ★★★", acq2:"Acquisto ★★", cos3:"Costruzione ★★★", acq1:"Acquisto ★", cos2:"Costruzione ★★", cos1:"Costruzione ★"};
 
 /* ── Stato ── */
+/* magazzino di default: materiali base a 10, essenziali a 0 */
+function defaultMagazzino(){
+  return Object.fromEntries(MATERIALI.map(m=>[m.id, m.ess?0:10]));
+}
 function defaultState(){
   const zero = Object.fromEntries(MATERIALI.map(m=>[m.id,0]));
   return {
     monete: 0,
     materiali: {...zero},
-    magazzino: {...zero},
+    magazzino: defaultMagazzino(),
     ricette: {},
     eroiSel: ["Vaerix","Brynn","Syrus","Galaden"],
     impostazioni: { pesi:{acq3:8, acq2:5, cos3:4, acq1:3, cos2:2, cos1:1}, soglia:10 }
@@ -180,6 +184,15 @@ let state = defaultState();
 let gameCode = localStorage.getItem("descent_code") || null;
 let db=null, gameRef=null, online=false, lastPushed="";
 let currentPlan=null, optCtx=null;
+
+/* ── Modalità test locale ──
+   Fuori da GitHub Pages (apertura del file, localhost, o ?local nell'URL)
+   Firebase resta disattivato: i dati restano solo su questo dispositivo e
+   non toccano la partita di produzione. */
+const LOCAL_ONLY =
+  location.protocol === "file:" ||
+  ["localhost","127.0.0.1","0.0.0.0",""].includes(location.hostname) ||
+  new URLSearchParams(location.search).has("local");
 
 /* ── Persistenza & sync ── */
 function normalize(s){
@@ -192,6 +205,10 @@ function normalize(s){
   out.impostazioni = { pesi:{...d.impostazioni.pesi, ...((s.impostazioni||{}).pesi||{})},
                        soglia:(s.impostazioni&&s.impostazioni.soglia!=null)? s.impostazioni.soglia : d.impostazioni.soglia };
   Object.values(out.ricette).forEach(r=>{ r.materiali=r.materiali||{}; r.eroi=r.eroi||[]; });
+  /* migrazione grafia eroe: Kheli → Kehli */
+  const fixHero=h=>h==="Kheli"?"Kehli":h;
+  out.eroiSel = out.eroiSel.map(fixHero);
+  Object.values(out.ricette).forEach(r=>{ r.eroi=r.eroi.map(fixHero); });
   return out;
 }
 function newCode(){
@@ -231,6 +248,7 @@ function attachGame(code){
   renderAll();
 }
 function initFirebase(){
+  if(LOCAL_ONLY){ db=null; updateSyncPill(); return; }
   try{
     if(firebaseConfig && firebaseConfig.databaseURL){
       firebase.initializeApp(firebaseConfig);
@@ -243,7 +261,7 @@ function updateSyncPill(){
   const p=document.getElementById("sync-pill");
   if(db&&online){ p.textContent="● sincronizzata"; p.classList.add("on"); }
   else if(db){ p.textContent="◌ connessione…"; p.classList.remove("on"); }
-  else { p.textContent="◌ locale"; p.classList.remove("on"); }
+  else { p.textContent=LOCAL_ONLY?"◌ test locale":"◌ locale"; p.classList.remove("on"); }
 }
 
 /* ── Utils ── */
@@ -393,8 +411,9 @@ function renderMercato(){
   rs.sort((a,b)=>b.stelle-a.stelle || a.nome.localeCompare(b.nome));
   $("scr-mkt").innerHTML = `
     <h2>Magazzino materiali</h2>
-    <p class="hint">Quantità disponibili ora nel mercato.</p>
+    <p class="hint">Quantità disponibili ora nel mercato. I materiali base partono da 10.</p>
     ${matRows("mkt")}
+    <button class="btn" onclick="resetMagazzino()">↺ Reset a default</button>
     <div class="row" style="margin-top:18px;">
       <h2 style="margin:0;">Ricette nel mercato</h2>
       <button class="btn gold" onclick="openRecipeForm(null,'mercato')">+ Nuova ricetta</button>
@@ -470,6 +489,12 @@ function newGame(){
     const c=newCode(); state=defaultState(); attachGame(c); save(); toast("Nuova partita: "+c);
   });
 }
+function resetMagazzino(){
+  askConfirm("Reset del magazzino?","I materiali base torneranno a 10, gli essenziali a 0.","","↺ Reset",()=>{
+    state.magazzino = defaultMagazzino();
+    save(); toast("Magazzino ripristinato");
+  });
+}
 function joinGame(){
   const c=($("join-code").value||"").trim().toUpperCase();
   if(!c){ toast("Inserisci un codice"); return; }
@@ -488,7 +513,6 @@ function toggleHero(h){
 function openRecipeForm(id, newStato){
   const r = id? state.ricette[id] : null;
   const showCosto = r? r.stato==="mercato" : newStato==="mercato";
-  const heroRows=(r? r.eroi : [EROI[0]]).map((h,i)=>heroRowHtml(h,i>0)).join("");
   const matRowsH=(r? Object.entries(r.materiali) : []).map(([m,q])=>matRowHtml(m,q)).join("");
   const pot = r? !!r.pot : false;
   const preTipo = (r&&r.prereq)? r.prereq.tipo : "posseduta";
@@ -517,9 +541,14 @@ function openRecipeForm(id, newStato){
       </select>
       <select id="f-prereq-id" style="display:${pot&&preTipo==="ricetta"?"block":"none"}; margin-top:8px;">${preOpts}</select>
     </div>
-    <label>Eroi (massimo 4)</label>
-    <div id="f-heroes">${heroRows}</div>
-    <button class="btn" style="margin-top:8px;" id="f-add-hero" onclick="addHeroRow()">+ Aggiungi eroe</button>
+    <label>Eroi</label>
+    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+      <button type="button" class="btn" style="flex:1; min-width:72px; padding:6px 8px; font-size:12px;" onclick="fHeroShortcut('all')">Tutti</button>
+      <button type="button" class="btn" style="flex:1; min-width:72px; padding:6px 8px; font-size:12px;" onclick="fHeroShortcut('leggera')">Arm. leggera</button>
+      <button type="button" class="btn" style="flex:1; min-width:72px; padding:6px 8px; font-size:12px;" onclick="fHeroShortcut('media')">Arm. media</button>
+      <button type="button" class="btn" style="flex:1; min-width:72px; padding:6px 8px; font-size:12px;" onclick="fHeroShortcut('pesante')">Arm. pesante</button>
+    </div>
+    <div id="f-heroes" class="heroes-grid" style="margin-top:8px;"></div>
     <label>Materiali per la costruzione</label>
     <div id="f-mats">${matRowsH}</div>
     <button class="btn" onclick="addMatRow()">+ Aggiungi materiale</button>
@@ -528,8 +557,9 @@ function openRecipeForm(id, newStato){
       <button class="btn gold" onclick="saveRecipe('${id||""}','${newStato||""}')">Salva ricetta</button>
     </div></div></div>`);
   window._fStars = r? r.stelle : 2;
+  window._fHeroes = r? [...r.eroi] : [];
   drawFormStars();
-  syncAddHeroBtn();
+  drawFormHeroes();
 }
 function togglePotUI(){
   const pot=$("f-pot").checked;
@@ -541,23 +571,36 @@ function drawFormStars(){
   for(let k=1;k<=3;k++) h+=`<span class="${k<=window._fStars?'':'off'}" onclick="window._fStars=(window._fStars===${k}?${k-1}:${k});drawFormStars()">★</span>`;
   $("f-stars").innerHTML=h;
 }
-function heroRowHtml(selVal, removable){
-  const opts=EROI.map(h=>`<option ${h===selVal?"selected":""}>${h}</option>`).join("");
-  return `<div class="inline hero-sel" style="margin-top:8px;"><select style="flex:1;">${opts}</select>${removable?'<button class="icon-btn" onclick="this.parentElement.remove();syncAddHeroBtn()">🗑</button>':""}</div>`;
+const HERO_SHORTCUTS={
+  all:[...EROI],
+  leggera:["Vaerix","Sorte","Syrus"],
+  media:["Vaerix","Galaden","Sorte","Kehli"],
+  pesante:["Brynn","Kehli"]
+};
+function drawFormHeroes(){
+  $("f-heroes").innerHTML = EROI.map(h=>
+    `<div class="hero-card${window._fHeroes.includes(h)?" sel":""}" onclick="fHeroToggle('${h}')">${h}</div>`).join("");
+}
+function fHeroToggle(h){
+  const i=window._fHeroes.indexOf(h);
+  if(i>=0) window._fHeroes.splice(i,1); else window._fHeroes.push(h);
+  drawFormHeroes();
+}
+function fHeroShortcut(kind){
+  window._fHeroes = [...(HERO_SHORTCUTS[kind]||[])];
+  drawFormHeroes();
 }
 function matRowHtml(matId, qty){
   const opts=MATERIALI.map(m=>`<option value="${m.id}" ${m.id===matId?"selected":""}>${m.nome}</option>`).join("");
   return `<div class="inline mat-sel" style="margin-bottom:8px;"><select style="flex:1;">${opts}</select><input type="number" min="1" value="${qty||1}" style="width:64px;"><button class="icon-btn" onclick="this.parentElement.remove()">🗑</button></div>`;
 }
-function addHeroRow(){ if(document.querySelectorAll("#f-heroes .hero-sel").length>=4) return; $("f-heroes").insertAdjacentHTML("beforeend", heroRowHtml(EROI[1],true)); syncAddHeroBtn(); }
-function syncAddHeroBtn(){ const b=$("f-add-hero"); if(b) b.style.display = document.querySelectorAll("#f-heroes .hero-sel").length>=4? "none":"inline-block"; }
 function addMatRow(){ $("f-mats").insertAdjacentHTML("beforeend", matRowHtml(MATERIALI[0].id,1)); }
 function saveRecipe(id, newStato){
   const nome=($("f-nome").value||"").trim();
   if(!nome){ toast("Il nome è obbligatorio"); return; }
   const showCosto = id? (state.ricette[id]&&state.ricette[id].stato==="mercato") : newStato==="mercato";
   const costo = showCosto? parseInt($("f-costo").value,10) : 0;
-  const eroi=[...new Set([...document.querySelectorAll("#f-heroes select")].map(s=>s.value))];
+  const eroi=[...new Set(window._fHeroes||[])];
   if(!eroi.length){ toast("Serve almeno un eroe"); return; }
   const materiali={};
   document.querySelectorAll("#f-mats .mat-sel").forEach(row=>{
