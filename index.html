@@ -119,8 +119,6 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════
@@ -224,10 +222,13 @@ let prevGameCode=null;   /* partita locale da ripristinare uscendo dalla sandbox
 const PROD_HOST = location.protocol === "https:" && /\.github\.io$/i.test(location.hostname);
 const LOCAL_ONLY = !PROD_HOST || new URLSearchParams(location.search).has("local");
 
-/* In ambiente di test l'SDK Firebase viene reso inservibile: senza di esso non
-   esiste alcun canale di scrittura verso il database di produzione. I dati reali
-   si leggono solo via GET REST (vedi roGet). */
-if(LOCAL_ONLY){ try{ delete window.firebase; }catch(e){ window.firebase=undefined; } }
+/* L'SDK Firebase viene scaricato solo in produzione (vedi loadFirebaseSdk): in
+   ambiente di test non è mai presente nella pagina, quindi non esiste alcun
+   canale di scrittura verso il database di produzione. I dati reali si leggono
+   solo via GET REST (vedi roGet). */
+const FIREBASE_SDK_BASE = "https://www.gstatic.com/firebasejs/10.12.2/";
+const FIREBASE_SDK_FILES = ["firebase-app-compat.js", "firebase-database-compat.js"];
+const FIREBASE_SDK_TIMEOUT_MS = 10000;
 
 /* ── Persistenza & sync ── */
 function normalize(s){
@@ -287,13 +288,29 @@ function attachGame(code){
   }
   renderAll();
 }
-function initFirebase(){
-  if(LOCAL_ONLY){ db=null; updateSyncPill(); return; }
+function loadScript(src){
+  return new Promise((resolve, reject)=>{
+    const s=document.createElement("script");
+    s.src=src;
+    s.onload=resolve;
+    s.onerror=()=>reject(new Error("caricamento fallito: "+src));
+    document.head.appendChild(s);
+  });
+}
+/* scarica gli script dell'SDK in ordine (database dipende da app); se la CDN non
+   risponde entro il timeout l'app parte comunque, in modalità locale */
+function loadFirebaseSdk(){
+  const load = FIREBASE_SDK_FILES.reduce((p,f)=>p.then(()=>loadScript(FIREBASE_SDK_BASE+f)), Promise.resolve());
+  const timeout = new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout SDK Firebase")), FIREBASE_SDK_TIMEOUT_MS));
+  return Promise.race([load, timeout]);
+}
+async function initFirebase(){
+  db=null;
+  if(LOCAL_ONLY || !(firebaseConfig && firebaseConfig.databaseURL)){ updateSyncPill(); return; }
   try{
-    if(firebaseConfig && firebaseConfig.databaseURL){
-      firebase.initializeApp(firebaseConfig);
-      db=firebase.database();
-    }
+    await loadFirebaseSdk();
+    firebase.initializeApp(firebaseConfig);
+    db=firebase.database();
   }catch(e){ db=null; }
   updateSyncPill();
 }
@@ -1303,22 +1320,25 @@ function undoApply(){
 }
 
 /* ── Avvio ── */
-initFirebase();
-let sbxBoot=null;
-try{ sbxBoot = LOCAL_ONLY? sessionStorage.getItem("descent_sbx_code") : null; }catch(e){}
-if(sbxBoot){
-  /* la sandbox sopravvive a un refresh della pagina, ma mai a una sessione nuova */
-  prevGameCode = gameCode;
-  SANDBOX = sbxBoot;
-  const copia = parseJSON(LS.get("descent_state_"+sbxBoot));
-  if(copia){ gameCode=sbxBoot; state=normalize(copia); renderAll(); }
-  else { SANDBOX=null; prevGameCode=null; renderAll(); sandboxLoadCode(sbxBoot); }
-} else if(gameCode){
-  attachGame(gameCode);
-} else {
-  renderAll();          /* app vuota dietro al popup di scelta */
-  firstRunModal();
+async function boot(){
+  await initFirebase();
+  let sbxBoot=null;
+  try{ sbxBoot = LOCAL_ONLY? sessionStorage.getItem("descent_sbx_code") : null; }catch(e){}
+  if(sbxBoot){
+    /* la sandbox sopravvive a un refresh della pagina, ma mai a una sessione nuova */
+    prevGameCode = gameCode;
+    SANDBOX = sbxBoot;
+    const copia = parseJSON(LS.get("descent_state_"+sbxBoot));
+    if(copia){ gameCode=sbxBoot; state=normalize(copia); renderAll(); }
+    else { SANDBOX=null; prevGameCode=null; renderAll(); sandboxLoadCode(sbxBoot); }
+  } else if(gameCode){
+    attachGame(gameCode);
+  } else {
+    renderAll();          /* app vuota dietro al popup di scelta */
+    firstRunModal();
+  }
 }
+boot();
 </script>
 </body>
 </html>
