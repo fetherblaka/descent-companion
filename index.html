@@ -20,6 +20,8 @@
   header h1{font-family:'Cinzel',serif; font-size:19px; font-weight:600; color:var(--gold); letter-spacing:1px;}
   .sync-pill{font-size:11px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted);}
   .sync-pill.on{border-color:#2a5647; color:var(--teal);}
+  .sync-pill.ro{border-color:var(--gold-dim); color:var(--gold);}
+  .sbx-bar{background:#33270f; border-bottom:1px solid var(--gold-dim); color:var(--gold); font-size:11.5px; padding:6px 14px; text-align:center;}
   main{flex:1; overflow-y:auto; padding:16px 16px 90px;}
   .screen{display:none;}
   .screen.active{display:block;}
@@ -98,6 +100,7 @@
     <h1>Descent Companion</h1>
     <span class="sync-pill" id="sync-pill">◌ locale</span>
   </header>
+  <div class="sbx-bar" id="sbx-bar" style="display:none;"></div>
   <main id="main">
     <section class="screen active" id="scr-inv"></section>
     <section class="screen" id="scr-mkt"></section>
@@ -180,10 +183,23 @@ function defaultState(){
     impostazioni: { pesi:{acq3:8, acq2:5, cos3:4, acq1:3, cos2:2, cos1:1}, soglia:10 }
   };
 }
+/* ── Sandbox di test ──
+   Quando attiva, SANDBOX contiene il codice della partita letta dal server:
+   ogni salvataggio finisce su chiavi localStorage separate ("sbx_") e nessuna
+   scrittura raggiunge mai Firebase. */
+let SANDBOX = null;
+const lsk = k => SANDBOX ? "sbx_"+k : k;
+const LS = {
+  get:(k)=>localStorage.getItem(lsk(k)),
+  set:(k,v)=>localStorage.setItem(lsk(k),v),
+  del:(k)=>localStorage.removeItem(lsk(k))
+};
+
 let state = defaultState();
-let gameCode = localStorage.getItem("descent_code") || null;
+let gameCode = LS.get("descent_code") || null;
 let db=null, gameRef=null, online=false, lastPushed="";
 let currentPlan=null, optCtx=null;
+let prevGameCode=null;   /* partita locale da ripristinare uscendo dalla sandbox */
 
 /* ── Modalità test locale ──
    Fuori da GitHub Pages (apertura del file, localhost, o ?local nell'URL)
@@ -193,6 +209,11 @@ const LOCAL_ONLY =
   location.protocol === "file:" ||
   ["localhost","127.0.0.1","0.0.0.0",""].includes(location.hostname) ||
   new URLSearchParams(location.search).has("local");
+
+/* In ambiente di test l'SDK Firebase viene reso inservibile: senza di esso non
+   esiste alcun canale di scrittura verso il database di produzione. I dati reali
+   si leggono solo via GET REST (vedi roGet). */
+if(LOCAL_ONLY){ try{ delete window.firebase; }catch(e){ window.firebase=undefined; } }
 
 /* ── Persistenza & sync ── */
 function normalize(s){
@@ -218,8 +239,8 @@ function newCode(){
 }
 let saveTimer=null;
 function save(rerender=true){
-  localStorage.setItem("descent_state_"+gameCode, JSON.stringify(state));
-  if(online && gameRef){
+  LS.set("descent_state_"+gameCode, JSON.stringify(state));
+  if(!SANDBOX && online && gameRef){
     clearTimeout(saveTimer);
     saveTimer=setTimeout(()=>{ lastPushed=JSON.stringify(state); gameRef.set(state); }, 250);
   }
@@ -227,11 +248,11 @@ function save(rerender=true){
 }
 function attachGame(code){
   gameCode=code;
-  localStorage.setItem("descent_code", code);
-  const local = localStorage.getItem("descent_state_"+code);
+  LS.set("descent_code", code);
+  const local = LS.get("descent_state_"+code);
   state = normalize(local? JSON.parse(local) : defaultState());
   if(gameRef) gameRef.off();
-  if(db){
+  if(db && !SANDBOX){
     gameRef = db.ref("partite/"+code);
     gameRef.on("value", snap=>{
       online=true; updateSyncPill();
@@ -239,7 +260,7 @@ function attachGame(code){
         const remote=JSON.stringify(snap.val());
         if(remote!==lastPushed && remote!==JSON.stringify(state)){
           state=normalize(snap.val());
-          localStorage.setItem("descent_state_"+code, remote);
+          LS.set("descent_state_"+code, remote);
           renderAll();
         }
       } else { lastPushed=JSON.stringify(state); gameRef.set(state); }
@@ -258,10 +279,133 @@ function initFirebase(){
   updateSyncPill();
 }
 function updateSyncPill(){
-  const p=document.getElementById("sync-pill");
+  const p=document.getElementById("sync-pill"), bar=document.getElementById("sbx-bar");
+  p.classList.remove("on","ro");
+  if(SANDBOX){
+    p.textContent="🔒 dati reali"; p.classList.add("ro");
+    bar.innerHTML="🔒 <b>Sandbox</b> — copia in sola lettura di "+esc(SANDBOX)+": nulla viene scritto sul server.";
+    bar.style.display="block";
+    return;
+  }
+  bar.style.display="none";
   if(db&&online){ p.textContent="● sincronizzata"; p.classList.add("on"); }
-  else if(db){ p.textContent="◌ connessione…"; p.classList.remove("on"); }
-  else { p.textContent=LOCAL_ONLY?"◌ test locale":"◌ locale"; p.classList.remove("on"); }
+  else if(db){ p.textContent="◌ connessione…"; }
+  else { p.textContent=LOCAL_ONLY?"◌ test locale":"◌ locale"; }
+}
+
+/* ── Lettura dei dati reali (solo ambiente di test) ──
+   Unico accesso al database di produzione: una GET REST. Da questo percorso non
+   esiste, per costruzione, alcuna possibilità di scrittura. */
+const DB_URL = String(firebaseConfig.databaseURL||"").replace(/\/+$/,"");
+async function roGet(path, shallow){
+  if(!LOCAL_ONLY) throw new Error("disponibile solo in ambiente di test");
+  if(!/^https:\/\//.test(DB_URL)) throw new Error("databaseURL non configurato");
+  const url = DB_URL+"/"+String(path).split("/").filter(Boolean).map(encodeURIComponent).join("/")
+            + ".json" + (shallow? "?shallow=true":"");
+  const res = await fetch(url, {method:"GET", cache:"no-store"});
+  if(!res.ok) throw new Error(res.status===401||res.status===403? "permesso negato dalle regole del database" : "HTTP "+res.status);
+  return res.json();
+}
+/* Codici noti: le regole del database non permettono di elencare /partite, quindi
+   si propongono la partita locale e i codici già aperti su questo dispositivo. */
+function sandboxKnownCodes(){
+  const out=[];
+  const add=c=>{ if(c && !out.includes(c)) out.push(c); };
+  add(SANDBOX? prevGameCode : gameCode);
+  try{ JSON.parse(localStorage.getItem("descent_sbx_recent")||"[]").forEach(add); }catch(e){}
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k && k.indexOf("descent_state_")===0) add(k.slice(14));
+    }
+  }catch(e){}
+  return out;
+}
+function sandboxRemember(code){
+  try{
+    const prev=JSON.parse(localStorage.getItem("descent_sbx_recent")||"[]");
+    localStorage.setItem("descent_sbx_recent", JSON.stringify([code].concat(prev.filter(c=>c!==code)).slice(0,8)));
+  }catch(e){}
+}
+function sandboxEnter(code, data){
+  if(!LOCAL_ONLY) return;
+  if(!SANDBOX) prevGameCode = gameCode;
+  SANDBOX = code;
+  try{ sessionStorage.setItem("descent_sbx_code", code); }catch(e){}
+  LS.del("descent_undo_"+code);
+  gameCode = code;
+  state = normalize(data||{});
+  LS.set("descent_code", code);
+  LS.set("descent_state_"+code, JSON.stringify(state));
+  sandboxRemember(code);
+  currentPlan=null;
+  renderAll();
+}
+async function sandboxLoadCode(code){
+  try{
+    const data = await roGet("partite/"+code);
+    if(!data){ toast("Partita "+code+" non trovata"); return; }
+    sandboxEnter(code, data);
+    toast("Dati reali caricati (sola lettura)");
+  }catch(e){ toast("Lettura fallita: "+e.message); }
+}
+async function sandboxPicker(){
+  if(!LOCAL_ONLY){ toast("Disponibile solo in ambiente di test"); return; }
+  closeDyn("dyn-sbx");
+  $("modals").insertAdjacentHTML("beforeend",
+   `<div class="overlay open" id="dyn-sbx"><div class="modal">
+      <h3>Dati reali</h3>
+      <p class="sub">Carica una partita dal database di produzione in una copia locale di prova: potrai usarla come vuoi, l'app non scriverà nulla sul server.</p>
+      <div id="sbx-list"><p class="hint">Lettura in corso…</p></div>
+      <label>Codice partita</label>
+      <div class="inline"><input type="text" id="sbx-code" placeholder="DSC-XXXX-XXXX"><button class="btn" onclick="sandboxPickManual()">Carica</button></div>
+      <div class="btn-row" style="margin-top:14px;"><button class="btn" onclick="closeDyn('dyn-sbx')">Annulla</button></div>
+    </div></div>`);
+  const codes = sandboxKnownCodes();
+  if(!codes.length){
+    if($("sbx-list")) $("sbx-list").innerHTML = `<p class="hint">Nessun codice noto su questo dispositivo: inseriscine uno qui sotto.</p>`;
+    return;
+  }
+  const found = [];
+  for(const c of codes.slice(0,8)){
+    try{ const g = await roGet("partite/"+c); if(g) found.push([c,g]); }catch(e){}
+  }
+  if(!$("sbx-list")) return;
+  window._sbxAll = Object.fromEntries(found);
+  $("sbx-list").innerHTML = found.length? found.map(([c,g])=>{
+      const nr=Object.keys(g.ricette||{}).length;
+      return `<div class="opt-card" onclick="sandboxPick('${esc(c)}')"><b>${esc(c)}</b>
+        <div class="val">🪙 ${g.monete||0} · ${nr} ricette · ${esc((g.eroiSel||[]).join(", "))}</div></div>`;
+    }).join("")
+    : `<p class="hint">Nessuna partita trovata sul server per i codici noti.</p>`;
+}
+function sandboxPick(c){
+  closeDyn("dyn-sbx");
+  const all = window._sbxAll||{};
+  if(all[c]){ sandboxEnter(c, all[c]); toast("Dati reali caricati (sola lettura)"); }
+  else sandboxLoadCode(c);
+}
+function sandboxPickManual(){
+  const c=($("sbx-code").value||"").trim().toUpperCase();
+  if(!c){ toast("Inserisci un codice"); return; }
+  closeDyn("dyn-sbx"); sandboxLoadCode(c);
+}
+function sandboxReload(){
+  if(!SANDBOX) return;
+  askConfirm("Ricaricare i dati reali?","La copia di prova verrà sostituita con i dati attuali sul server: le modifiche fatte nella sandbox andranno perse.","","↻ Ricarica",()=>sandboxLoadCode(SANDBOX));
+}
+function sandboxExit(){
+  if(!SANDBOX) return;
+  const code=SANDBOX;
+  LS.del("descent_state_"+code); LS.del("descent_undo_"+code); LS.del("descent_code");
+  SANDBOX=null;
+  try{ sessionStorage.removeItem("descent_sbx_code"); }catch(e){}
+  gameCode = prevGameCode || LS.get("descent_code") || null;
+  prevGameCode=null;
+  currentPlan=null;
+  if(gameCode) attachGame(gameCode);
+  else { state=defaultState(); renderAll(); firstRunModal(); }
+  toast("Sandbox chiusa");
 }
 
 /* ── Utils ── */
@@ -446,7 +590,7 @@ function renderOttimizza(){
 }
 function renderImpostazioni(){
   const p=state.impostazioni.pesi;
-  const hasUndo = !!localStorage.getItem("descent_undo_"+gameCode);
+  const hasUndo = !!LS.get("descent_undo_"+gameCode);
   $("scr-set").innerHTML = `
     <h2>Pesi delle azioni</h2>
     <p class="hint">Modificabili se l'app fa troppe (o troppo poche) domande. Rispetta la gerarchia: valori decrescenti dall'alto in basso.</p>
@@ -467,7 +611,18 @@ function renderImpostazioni(){
       <label>Collega a una partita esistente</label>
       <div class="inline"><input type="text" id="join-code" placeholder="DSC-XXXX-XXXX"><button class="btn" onclick="joinGame()">Collega</button></div>
     </div>
-    ${db? "" : `<p class="hint">Per condividere i dati fra dispositivi, incolla la configurazione Firebase nel file index.html (blocco evidenziato in cima allo script).</p>`}
+    ${(db||LOCAL_ONLY)? "" : `<p class="hint">Per condividere i dati fra dispositivi, incolla la configurazione Firebase nel file index.html (blocco evidenziato in cima allo script).</p>`}
+    ${LOCAL_ONLY? `
+    <h2>Ambiente di test</h2>
+    <div class="card">
+      ${SANDBOX? `
+      <div class="summary-row"><span>Sandbox</span><b>${esc(SANDBOX)}</b></div>
+      <p class="hint" style="margin:8px 0 10px;">Copia locale dei dati reali: si può modificare liberamente, nulla viene inviato al server.</p>
+      <div class="btn-row"><button class="btn" onclick="sandboxReload()">↻ Ricarica dal server</button><button class="btn danger" onclick="sandboxExit()">✕ Esci dalla sandbox</button></div>`
+      : `
+      <p class="hint" style="margin:0 0 10px;">Firebase è disattivato: i dati restano su questo dispositivo. Puoi caricare una partita reale in sola lettura per provare l'app con dati veri.</p>
+      <button class="btn big" onclick="sandboxPicker()">🔒 Carica dati reali (sola lettura)</button>`}
+    </div>`:""}
     <h2>Sicurezza</h2>
     <div class="card">
       <button class="btn big" ${hasUndo?"":"disabled"} onclick="undoApply()">↩ Annulla ultima applicazione piano</button>
@@ -485,6 +640,7 @@ function setPeso(k,v){ const n=parseFloat(v); if(!isNaN(n)&&n>=0){ state.imposta
 function setSoglia(v){ const n=parseFloat(v); if(!isNaN(n)&&n>=0){ state.impostazioni.soglia=n; save(false);} }
 function copyCode(){ navigator.clipboard.writeText(gameCode).then(()=>toast("Codice copiato")).catch(()=>prompt("Copia il codice:",gameCode)); }
 function newGame(){
+  if(SANDBOX){ toast("Non disponibile nella sandbox"); return; }
   askConfirm("Nuova partita?","Verrà creato un nuovo codice con dati azzerati. La partita attuale resta raggiungibile con il suo codice.","","✓ Crea", ()=>{
     const c=newCode(); state=defaultState(); attachGame(c); save(); toast("Nuova partita: "+c);
   });
@@ -504,6 +660,8 @@ function firstRunModal(){
       <button class="btn gold big" id="fr-new">✦ Inizia una nuova partita</button>
       <label>Oppure collega una partita esistente</label>
       <div class="inline"><input type="text" id="fr-code" placeholder="DSC-XXXX-XXXX"><button class="btn" id="fr-join">Collega</button></div>
+      ${LOCAL_ONLY? `<p class="hint" style="margin:14px 0 6px;">Ambiente di test: puoi anche caricare una partita reale in sola lettura.</p>
+      <button class="btn" onclick="closeDyn('dyn-firstrun'); sandboxPicker();">🔒 Carica dati reali</button>`:""}
     </div></div>`);
   $("fr-new").onclick=()=>{
     closeDyn("dyn-firstrun");
@@ -513,16 +671,17 @@ function firstRunModal(){
     const c=($("fr-code").value||"").trim().toUpperCase();
     if(!c){ toast("Inserisci un codice"); return; }
     closeDyn("dyn-firstrun");
-    localStorage.removeItem("descent_state_"+c);
+    LS.del("descent_state_"+c);
     attachGame(c); toast("Collegato a "+c);
   };
   $("fr-join").onclick=doJoin;
   $("fr-code").onkeydown=e=>{ if(e.key==="Enter") doJoin(); };
 }
 function joinGame(){
+  if(SANDBOX){ toast("Non disponibile nella sandbox"); return; }
   const c=($("join-code").value||"").trim().toUpperCase();
   if(!c){ toast("Inserisci un codice"); return; }
-  localStorage.removeItem("descent_state_"+c);
+  LS.del("descent_state_"+c);
   attachGame(c); toast("Collegato a "+c);
 }
 
@@ -940,7 +1099,7 @@ function transformIfPot(r){
 }
 function applyPlan(){
   const pl=currentPlan; if(!pl) return;
-  localStorage.setItem("descent_undo_"+gameCode, JSON.stringify(state));
+  LS.set("descent_undo_"+gameCode, JSON.stringify(state));
   Object.entries(pl.sells).forEach(([m,q])=>{
     state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q);
     state.magazzino[m]=(state.magazzino[m]||0)+q;
@@ -967,18 +1126,27 @@ function applyPlan(){
   infoModal("Piano applicato","Tutti i dati sono stati aggiornati"+(db&&online?" e sincronizzati.":"."),"Vai all'inventario →",()=>goScreen("scr-inv"));
 }
 function undoApply(){
-  const bak=localStorage.getItem("descent_undo_"+gameCode);
+  const bak=LS.get("descent_undo_"+gameCode);
   if(!bak){ toast("Nessuna applicazione da annullare"); return; }
   askConfirm("Annullare l'ultima applicazione?","Lo stato tornerà a com'era prima dell'ultimo \"Applica piano\".","","↩ Ripristina",()=>{
     state=normalize(JSON.parse(bak));
-    localStorage.removeItem("descent_undo_"+gameCode);
+    LS.del("descent_undo_"+gameCode);
     save(); toast("Stato ripristinato");
   });
 }
 
 /* ── Avvio ── */
 initFirebase();
-if(gameCode){
+let sbxBoot=null;
+try{ sbxBoot = LOCAL_ONLY? sessionStorage.getItem("descent_sbx_code") : null; }catch(e){}
+if(sbxBoot){
+  /* la sandbox sopravvive a un refresh della pagina, ma mai a una sessione nuova */
+  prevGameCode = gameCode;
+  SANDBOX = sbxBoot;
+  const copia = LS.get("descent_state_"+sbxBoot);
+  if(copia){ gameCode=sbxBoot; state=normalize(JSON.parse(copia)); renderAll(); }
+  else { SANDBOX=null; prevGameCode=null; renderAll(); sandboxLoadCode(sbxBoot); }
+} else if(gameCode){
   attachGame(gameCode);
 } else {
   renderAll();          /* app vuota dietro al popup di scelta */
