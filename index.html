@@ -161,6 +161,7 @@ const MATERIALI = [
 ];
 const MAT = Object.fromEntries(MATERIALI.map(m=>[m.id,m]));
 const EROI = ["Vaerix","Brynn","Syrus","Galaden","Sorte","Kehli"];
+const RECIPE_STATI = ["mercato","acquistata","costruita"];
 /* rank 1 = priorità massima */
 const RANK = {acq3:1, acq2:2, cos3:3, acq1:4, cos2:5, cos1:6};
 const RANK_LABEL = {acq3:"Acquisto ★★★", acq2:"Acquisto ★★", cos3:"Costruzione ★★★", acq1:"Acquisto ★", cos2:"Costruzione ★★", cos1:"Costruzione ★"};
@@ -207,7 +208,7 @@ function parseJSON(str, fallback=null){
 
 let state = defaultState();
 let gameCode = LS.get("descent_code") || null;
-let db=null, gameRef=null, online=false, lastPushed="";
+let db=null, gameRef=null, online=false;
 let currentPlan=null, optCtx=null;
 let planSig=null;          /* firma dello stato su cui è stato calcolato il piano mostrato */
 let planStaleNotice=false; /* avviso "piano non più valido" nella schermata Ottimizza */
@@ -237,7 +238,14 @@ function normalize(s){
   const out = {...d, ...s};
   out.materiali = {...d.materiali, ...(s.materiali||{})};
   out.magazzino = {...d.magazzino, ...(s.magazzino||{})};
-  out.ricette = s.ricette || {};
+  out.ricette = isPlainObj(s.ricette)? {...s.ricette} : {};
+  /* scarta le ricette incomplete (es. resti di una modifica arrivata su una
+     ricetta che un altro dispositivo aveva eliminato) */
+  Object.keys(out.ricette).forEach(k=>{
+    const r=out.ricette[k];
+    if(!isPlainObj(r) || typeof r.nome!=="string" || !RECIPE_STATI.includes(r.stato)) delete out.ricette[k];
+    else r.id=k;
+  });
   out.eroiSel = Array.isArray(s.eroiSel)&&s.eroiSel.length? s.eroiSel : d.eroiSel;
   out.impostazioni = { pesi:{...d.impostazioni.pesi, ...((s.impostazioni||{}).pesi||{})},
                        soglia:(s.impostazioni&&s.impostazioni.soglia!=null)? s.impostazioni.soglia : d.impostazioni.soglia };
@@ -246,47 +254,166 @@ function normalize(s){
   const fixHero=h=>h==="Kheli"?"Kehli":h;
   out.eroiSel = out.eroiSel.map(fixHero);
   Object.values(out.ricette).forEach(r=>{ r.eroi=r.eroi.map(fixHero); });
+  cleanOrphanPrereqs(out);
   return out;
+}
+/* un prerequisito che punta a una ricetta non più presente equivale a "già
+   posseduta" (è già così che lo trattano ottimizzatore e interfaccia): lo si
+   rende esplicito, così nei dati non restano riferimenti pendenti */
+function cleanOrphanPrereqs(s){
+  Object.values(s.ricette).forEach(r=>{
+    if(r.prereq && r.prereq.tipo==="ricetta" && !s.ricette[r.prereq.id]) r.prereq={tipo:"posseduta"};
+  });
 }
 function newCode(){
   const c=()=>"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   const blk=n=>Array.from({length:n},()=>c()[Math.floor(Math.random()*c().length)]).join("");
   return "DSC-"+blk(4)+"-"+blk(4);
 }
+/* ── Sincronizzazione ──
+   Al server si inviano solo le differenze rispetto all'ultimo stato allineato
+   ("synced"), percorso per percorso: modifiche concorrenti a campi diversi da
+   dispositivi diversi non si sovrascrivono. I contatori (monete, materiali,
+   magazzino) viaggiano come incrementi in una transaction, così due "+1"
+   simultanei valgono +2. Quando arriva un aggiornamento remoto, le modifiche
+   locali non ancora inviate vengono riapplicate sopra i dati remoti. */
+let synced=null;      /* forma canonica dell'ultimo stato allineato col server */
 let saveTimer=null;
+let pushing=false;    /* scritture in corso: gli eventi locali che generano vanno ignorati */
+const isPlainObj=v=>!!v && typeof v==="object" && !Array.isArray(v);
+/* copia profonda con chiavi ordinate e senza null né oggetti/array vuoti: la
+   stessa forma in cui Firebase restituisce i dati */
+function canonState(v){
+  if(Array.isArray(v)) return v.map(canonState);
+  if(isPlainObj(v)){
+    const o={};
+    Object.keys(v).sort().forEach(k=>{
+      const c=canonState(v[k]);
+      if(c!=null && !(typeof c==="object" && !Object.keys(c).length)) o[k]=c;
+    });
+    return o;
+  }
+  return v;
+}
+const isCounterPath=p=>(p.length===1 && p[0]==="monete") || (p.length===2 && (p[0]==="materiali" || p[0]==="magazzino"));
+/* operazioni che portano da a a b: {path, delta} per i contatori,
+   {path, value} per il resto (value null = elimina) */
+function diffState(a, b){
+  const ops=[];
+  const walk=(x, y, path)=>{
+    if(isPlainObj(x) && isPlainObj(y)){
+      new Set([...Object.keys(x), ...Object.keys(y)]).forEach(k=>walk(x[k], y[k], [...path, k]));
+      return;
+    }
+    if(JSON.stringify(x)===JSON.stringify(y)) return;
+    if(isCounterPath(path) && typeof x==="number" && typeof y==="number") ops.push({path, delta:y-x});
+    else ops.push({path, value:y===undefined? null : y});
+  };
+  walk(canonState(a), canonState(b), []);
+  return ops;
+}
+function applyOps(base, ops){
+  const out=canonState(base);
+  ops.forEach(({path, value, delta})=>{
+    let o=out;
+    for(const k of path.slice(0,-1)){ if(!isPlainObj(o[k])) o[k]={}; o=o[k]; }
+    const k=path[path.length-1];
+    if(delta!==undefined) o[k]=Math.max(0, (typeof o[k]==="number"? o[k] : 0)+delta);
+    else if(value==null) delete o[k];
+    else o[k]=canonState(value);
+  });
+  return out;
+}
 function save(rerender=true){
   LS.set("descent_state_"+gameCode, JSON.stringify(state));
-  if(!SANDBOX && online && gameRef){
+  if(!SANDBOX && gameRef){
     clearTimeout(saveTimer);
     saveTimer=setTimeout(pushRemote, 250);
   }
   if(rerender) renderAll();
 }
+const syncFailed=e=>toast("Sincronizzazione non riuscita: "+((e&&e.message)||e));
 function pushRemote(){
-  if(!gameRef) return;
-  lastPushed=JSON.stringify(state);
-  gameRef.set(state).catch(e=>toast("Sincronizzazione non riuscita: "+((e&&e.message)||e)));
+  clearTimeout(saveTimer); saveTimer=null;
+  if(!gameRef || SANDBOX || !synced) return;
+  const ops=diffState(synced, state);
+  if(!ops.length) return;
+  synced=canonState(state);
+  const updates={}, counters=[];
+  ops.forEach(op=>{ if(op.delta!==undefined) counters.push(op); else updates[op.path.join("/")]=op.value; });
+  pushing=true;
+  try{
+    if(Object.keys(updates).length) gameRef.update(updates).catch(syncFailed);
+    counters.forEach(op=>{
+      gameRef.child(op.path.join("/"))
+        .transaction(cur=>Math.max(0, (typeof cur==="number"? cur : 0)+op.delta))
+        .catch(syncFailed);
+    });
+  } finally { pushing=false; }
 }
+/* partita che non esiste ancora sul server (appena creata): la si scrive intera */
+function pushFull(){
+  if(!gameRef || SANDBOX) return;
+  synced=canonState(state);
+  pushing=true;
+  try{ gameRef.set(state).catch(syncFailed); } finally { pushing=false; }
+}
+function onRemoteValue(code, snap){
+  online=true; updateSyncPill();
+  if(pushing) return;
+  if(!snap.exists()){ pushFull(); return; }
+  const pending = synced? diffState(synced, state) : [];
+  const base = normalize(snap.val());
+  synced = canonState(base);
+  const next = pending.length? normalize(applyOps(base, pending)) : base;
+  /* l'eco delle proprie scritture non cambia nulla: lo stato resta lo stesso oggetto */
+  if(stateSig(next)===stateSig(state)) return;
+  state = next;
+  LS.set("descent_state_"+code, JSON.stringify(state));
+  renderAll();
+}
+/* se la pagina va in background o si chiude, le modifiche in attesa partono subito */
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden" && saveTimer) pushRemote(); });
+window.addEventListener("pagehide", ()=>{ if(saveTimer) pushRemote(); });
 function attachGame(code){
+  if(saveTimer) pushRemote();   /* modifiche in sospeso della partita precedente */
+  if(gameRef){ gameRef.off(); gameRef=null; }
   gameCode=code;
   LS.set("descent_code", code);
+  rememberGame(code);
   state = normalize(parseJSON(LS.get("descent_state_"+code)) || defaultState());
-  if(gameRef) gameRef.off();
+  synced = canonState(state);
   if(db && !SANDBOX){
     gameRef = db.ref("partite/"+code);
-    gameRef.on("value", snap=>{
-      online=true; updateSyncPill();
-      if(snap.exists()){
-        const remote=JSON.stringify(snap.val());
-        if(remote!==lastPushed && remote!==JSON.stringify(state)){
-          state=normalize(snap.val());
-          LS.set("descent_state_"+code, remote);
-          renderAll();
-        }
-      } else pushRemote();
-    }, ()=>{ online=false; updateSyncPill(); });
+    gameRef.on("value", snap=>onRemoteValue(code, snap), ()=>{ online=false; updateSyncPill(); });
   }
   renderAll();
+}
+
+/* ── Pulizia localStorage ──
+   Si tiene in cache solo le ultime RECENT_MAX partite aperte: le altre restano
+   sul server e si ricaricano collegandosi di nuovo. */
+const RECENT_KEY="descent_recent_codes", RECENT_MAX=5;
+function storageKeys(){
+  const keys=[];
+  try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k) keys.push(k); } }catch(e){}
+  return keys;
+}
+function rememberGame(code){
+  if(SANDBOX) return;
+  let recent=parseJSON(LS.get(RECENT_KEY));
+  if(!Array.isArray(recent))   /* prima volta: si parte dalle partite già in cache */
+    recent=storageKeys().filter(k=>k.startsWith("descent_state_")).map(k=>k.slice("descent_state_".length)).filter(c=>CODE_RE.test(c));
+  recent=[code, ...recent.filter(c=>c!==code)].slice(0, RECENT_MAX);
+  LS.set(RECENT_KEY, JSON.stringify(recent));
+  storageKeys().forEach(k=>{
+    const m=/^descent_(state|undo)_(.*)$/.exec(k);
+    if(m && !recent.includes(m[2])) LS.del(k);
+  });
+}
+/* copie della sandbox rimaste da sessioni precedenti (la sandbox non sopravvive alla sessione) */
+function pruneSandboxLeftovers(){
+  storageKeys().filter(k=>k.startsWith("sbx_")).forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
 }
 function loadScript(src){
   return new Promise((resolve, reject)=>{
@@ -583,7 +710,8 @@ function editNum(kind, matId){
 }
 function editCosto(id){
   const r=state.ricette[id]; if(!r) return;
-  numModal("Costo di acquisto — "+esc(r.nome), r.costo, n=>{ r.costo=n; save(); });
+  /* la ricetta si rilegge alla conferma: nel frattempo un aggiornamento remoto può aver sostituito lo stato */
+  numModal("Costo di acquisto — "+esc(r.nome), r.costo, n=>{ const cur=state.ricette[id]; if(cur){ cur.costo=n; save(); } });
 }
 
 /* ── Render ── */
@@ -750,7 +878,7 @@ function copyCode(){ navigator.clipboard.writeText(gameCode).then(()=>toast("Cod
 function newGame(){
   if(SANDBOX){ toast("Non disponibile nella sandbox"); return; }
   askConfirm("Nuova partita?","Verrà creato un nuovo codice con dati azzerati. La partita attuale resta raggiungibile con il suo codice.","","✓ Crea", ()=>{
-    const c=newCode(); state=defaultState(); attachGame(c); save(); toast("Nuova partita: "+c);
+    const c=newCode(); attachGame(c); save(); toast("Nuova partita: "+c);
   });
 }
 function resetMagazzino(){
@@ -773,7 +901,7 @@ function firstRunModal(){
     </div></div>`);
   $("fr-new").onclick=()=>{
     closeDyn("dyn-firstrun");
-    const c=newCode(); state=defaultState(); attachGame(c); save(); toast("Nuova partita: "+c);
+    const c=newCode(); attachGame(c); save(); toast("Nuova partita: "+c);
   };
   const doJoin=()=>{
     const c=readCode("fr-code"); if(!c) return;
@@ -962,7 +1090,7 @@ function saveRecipe(id, newStato){
 }
 function deleteRecipe(id){
   const r=state.ricette[id]; if(!r) return;
-  askConfirm("Eliminare la ricetta?", esc(r.nome)+" verrà rimossa definitivamente.","","🗑 Elimina",()=>{ delete state.ricette[id]; save(); },"danger");
+  askConfirm("Eliminare la ricetta?", esc(r.nome)+" verrà rimossa definitivamente.","","🗑 Elimina",()=>{ delete state.ricette[id]; cleanOrphanPrereqs(state); save(); },"danger");
 }
 function markAcquistata(id){
   const r=state.ricette[id]; if(!r) return;
@@ -970,8 +1098,9 @@ function markAcquistata(id){
     esc(r.nome)+" uscirà dal Mercato e finirà tra le vostre ricette.",
     `<div class="checkline"><input type="checkbox" id="chk-coins" checked style="width:auto;"><label for="chk-coins" style="margin:0;">Scala ${esc(r.costo)} monete dall'inventario</label></div>`,
     "✓ Conferma",()=>{
-      r.stato="acquistata";
-      if(chkCoins) state.monete=Math.max(0,state.monete-r.costo);
+      const cur=state.ricette[id]; if(!cur) return;   /* riletta: lo stato può essere stato sostituito */
+      cur.stato="acquistata";
+      if(chkCoins) state.monete=Math.max(0,state.monete-cur.costo);
       save(); toast("Ricetta acquistata");
     });
   const chk=$("chk-coins"); chkCoins=true;
@@ -990,9 +1119,11 @@ function markCostruita(id){
       +(linked? ` La versione normale collegata (${esc(linked.nome)}) verrà rimossa dall'app.`:""),
     mats.length? `<div class="checkline"><input type="checkbox" id="chk-mats" ${enough?"checked":""} style="width:auto;"><label for="chk-mats" style="margin:0;">Scala i materiali dall'inventario${enough?"":" (⚠ non tutti disponibili)"}</label></div>`:"",
     "⚒ Conferma",()=>{
-      r.stato="costruita";
-      if(chkMats) mats.forEach(([m,q])=>{ state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q); });
-      transformIfPot(r);
+      const cur=state.ricette[id]; if(!cur) return;   /* riletta: lo stato può essere stato sostituito */
+      cur.stato="costruita";
+      if(chkMats) Object.entries(cur.materiali).filter(([,q])=>q>0)
+        .forEach(([m,q])=>{ state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q); });
+      transformIfPot(cur);
       save(); toast("Ricetta costruita");
     },"gold");
   const chk=$("chk-mats"); chkMats=enough&&mats.length>0;
@@ -1132,23 +1263,8 @@ function findChallenger(plans){
   }
   return rankCh? {plan:rankCh, tipo:"rango"} : (nearCh? {plan:nearCh, tipo:"soglia"} : null);
 }
-/* firma canonica dello stato: ignora null, oggetti/array vuoti e ordine delle
-   chiavi, così l'eco di Firebase (che li scarta) non conta come modifica */
-function stateSig(s){
-  const canon=v=>{
-    if(Array.isArray(v)) return v.map(canon);
-    if(v && typeof v==="object"){
-      const o={};
-      Object.keys(v).sort().forEach(k=>{
-        const c=canon(v[k]);
-        if(c!=null && !(typeof c==="object" && !Object.keys(c).length)) o[k]=c;
-      });
-      return o;
-    }
-    return v;
-  };
-  return JSON.stringify(canon(s));
-}
+/* firma canonica dello stato: l'eco di Firebase (che scarta null e oggetti vuoti) non conta come modifica */
+function stateSig(s){ return JSON.stringify(canonState(s)); }
 function clearPlan(){ currentPlan=null; planSig=null; }
 function resetOptimizer(){
   clearPlan(); optCtx=null; planStaleNotice=false;
@@ -1274,6 +1390,7 @@ function transformIfPot(r){
     const N=state.ricette[r.prereq.id];
     if(N) delete state.ricette[N.id];
     r.prereq={tipo:"posseduta"};
+    cleanOrphanPrereqs(state);
   }
 }
 function applyPlan(){
@@ -1283,7 +1400,7 @@ function applyPlan(){
     renderOttimizza();
     return;
   }
-  LS.set("descent_undo_"+gameCode, JSON.stringify(state));
+  const before=canonState(state);
   Object.entries(pl.sells).forEach(([m,q])=>{
     state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q);
     state.magazzino[m]=(state.magazzino[m]||0)+q;
@@ -1305,18 +1422,28 @@ function applyPlan(){
     transformIfPot(r);
   });
   state.monete=Math.max(0,state.monete);
+  /* per l'annullamento si conservano lo stato prima e dopo il piano: se ne potrà
+     invertire solo l'effetto, senza toccare le modifiche arrivate dopo */
+  LS.set("descent_undo_"+gameCode, JSON.stringify({before, after:canonState(state)}));
   clearPlan();
   save();
   infoModal("Piano applicato","Tutti i dati sono stati aggiornati"+(db&&online?" e sincronizzati.":"."),"Vai all'inventario →",()=>goScreen("scr-inv"));
 }
 function undoApply(){
-  const bak=parseJSON(LS.get("descent_undo_"+gameCode));
-  if(!bak){ LS.del("descent_undo_"+gameCode); toast("Nessuna applicazione da annullare"); return; }
-  askConfirm("Annullare l'ultima applicazione?","Lo stato tornerà a com'era prima dell'ultimo \"Applica piano\".","","↩ Ripristina",()=>{
-    state=normalize(bak);
-    LS.del("descent_undo_"+gameCode);
-    save(); toast("Stato ripristinato");
-  });
+  const key="descent_undo_"+gameCode;
+  const bak=parseJSON(LS.get(key));
+  if(!isPlainObj(bak)){ LS.del(key); toast("Nessuna applicazione da annullare"); return; }
+  const legacy=!bak.before;   /* formato precedente: istantanea completa dello stato */
+  askConfirm("Annullare l'ultima applicazione?",
+    legacy? "Lo stato tornerà a com'era prima dell'ultimo \"Applica piano\"."
+          : "Vengono annullate solo le modifiche fatte dal piano: quelle arrivate dopo restano.",
+    "","↩ Ripristina",()=>{
+      /* si applica allo stato attuale l'inverso del piano (i contatori per differenza) */
+      const revert = legacy? diffState(state, bak) : diffState(bak.after, bak.before);
+      state=normalize(applyOps(state, revert));
+      LS.del(key);
+      save(); toast("Stato ripristinato");
+    });
 }
 
 /* ── Avvio ── */
@@ -1324,6 +1451,7 @@ async function boot(){
   await initFirebase();
   let sbxBoot=null;
   try{ sbxBoot = LOCAL_ONLY? sessionStorage.getItem("descent_sbx_code") : null; }catch(e){}
+  if(!sbxBoot) pruneSandboxLeftovers();
   if(sbxBoot){
     /* la sandbox sopravvive a un refresh della pagina, ma mai a una sessione nuova */
     prevGameCode = gameCode;
