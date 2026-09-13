@@ -1,5 +1,5 @@
 /* Ricette: form di inserimento/modifica e azioni sulle singole ricette. */
-import { EROI, HERO_SHORTCUTS, MAT, MATERIALI, MAX_STELLE } from "./data.js";
+import { EROI, HERO_SHORTCUTS, MAT, MATERIALI, MAX_STELLE, sortMatEntries } from "./data.js";
 import { cleanOrphanPrereqs } from "./schema.js";
 import { S } from "./store.js";
 import { save } from "./sync.js";
@@ -66,7 +66,7 @@ export function openRecipeForm(id, newStato) {
        <input type="number" id="f-costo" min="0" inputmode="numeric" value="${r ? esc(r.costo) : ""}" placeholder="45">`
     : "";
   const matRows = r
-    ? Object.entries(r.materiali)
+    ? sortMatEntries(Object.entries(r.materiali))
         .map(([m, q]) => matRowHtml(m, q))
         .join("")
     : "";
@@ -274,7 +274,7 @@ export function markCostruita(id) {
   const st = S.state;
   const r = ownValue(st.ricette, id);
   if (!r) return;
-  const mats = Object.entries(r.materiali).filter(([, q]) => q > 0);
+  const mats = sortMatEntries(Object.entries(r.materiali)).filter(([, q]) => q > 0);
   const enough = mats.every(([m, q]) => (st.materiali[m] || 0) >= q);
   const linked = r.pot && r.prereq && r.prereq.tipo === "ricetta" ? ownValue(st.ricette, r.prereq.id) : null;
   const requires = mats.length

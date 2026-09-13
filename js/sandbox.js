@@ -168,6 +168,7 @@ export function sandboxExit() {
   const code = S.sandbox;
   LS.del(KEY.state(code));
   LS.del(KEY.undo(code));
+  LS.del(KEY.backups(code));
   LS.del(KEY.code);
   S.sandbox = null;
   try {

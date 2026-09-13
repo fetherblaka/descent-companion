@@ -8,9 +8,12 @@ tramite Firebase Realtime Database.
 
 - **Inventario**: monete e materiali posseduti.
 - **Mercato**: magazzino dei materiali acquistabili e ricette in vendita, con priorità a stelle.
-- **Ricette**: ricette acquistate e costruite, versioni potenziate collegate alla versione normale.
+- **Ricette**: ricette acquistate e costruite, numerate nell'ordine della lista (`#12`) e con ricerca per nome o
+  numero; versioni potenziate collegate alla versione normale.
 - **Ottimizza**: scelta dei 4 eroi in missione e piano consigliato (vendite, acquisti, costruzioni), applicabile
   all'inventario per intero o fino a uno step, e annullabile. Vedi [Ottimizzatore](#ottimizzatore).
+- **Backup**: in **Altro**, copie della partita salvate nel database (le ultime 3), ripristinabili da ogni
+  dispositivo collegato.
 - **Partita condivisa**: ogni partita ha un codice `DSC-XXXX-XXXX`; chi lo inserisce vede e modifica gli stessi dati.
 
 ## Ambienti
@@ -61,6 +64,7 @@ Nessun build: il sito è composto dai soli file statici `index.html`, `css/` e `
 | [js/plan.js](js/plan.js)           | schermata Ottimizza, applicazione e annullamento del piano                    |
 | [js/optimizer.js](js/optimizer.js) | algoritmo dell'ottimizzatore (puro, riceve lo stato)                          |
 | [js/recipes.js](js/recipes.js)     | form e azioni sulle ricette                                                   |
+| [js/backup.js](js/backup.js)       | backup della partita nel database (ultimi 3) e ripristino                     |
 | [js/game.js](js/game.js)           | inventario, impostazioni, creazione e collegamento della partita              |
 | [js/sandbox.js](js/sandbox.js)     | sandbox dati reali                                                            |
 | [js/ui.js](js/ui.js)               | toast, modali, navigazione, frammenti HTML condivisi                          |
@@ -80,8 +84,13 @@ npm run format:check   # verifica la formattazione
 
 Convenzioni del codice:
 
-- **Eventi**: nessun handler inline. Gli elementi dichiarano `data-action` (click) o `data-change` (change) con i
-  parametri in altri attributi `data-*`; le azioni sono registrate in [js/events.js](js/events.js).
+- **Eventi**: nessun handler inline. Gli elementi dichiarano `data-action` (click), `data-change` (change) o
+  `data-input` (mentre si scrive) con i parametri in altri attributi `data-*`; le azioni sono registrate in
+  [js/events.js](js/events.js).
+- **Materiali**: `MATERIALI` è ordinato alfabeticamente (base, poi essenziali); gli elenchi presi da oggetti
+  (materiali di una ricetta, vendite e acquisti del piano) passano da `sortMatEntries()`.
+- **Layout**: nessuno scorrimento orizzontale. Nei contenitori flex/grid i figli hanno `min-width: 0` e le colonne
+  `minmax(0, 1fr)`; i testi lunghi vanno a capo.
 - **HTML generato**: ogni valore interpolato passa da `esc()`, anche i numeri: i dati arrivano da un database condiviso.
 - **Accessibilità**: i controlli che non sono `<button>` hanno `role="button"` e `tabindex="0"`; i modali si aprono
   con `openModal()`, che gestisce focus, `inert` e chiusura.
@@ -117,6 +126,11 @@ partite aperte).
 - **Schema**: i dati hanno un campo `schemaVersion`. Tutto ciò che entra nell'app passa da `normalize()` in
   [js/schema.js](js/schema.js), che applica le migrazioni mancanti e valida tipi e intervalli.
 - **Cambiare la forma dei dati**: aggiungere una migrazione in fondo a `MIGRATIONS` e incrementare `SCHEMA_VERSION`.
+- **Backup**: in `partite/<codice>/backups/<ts>` (`{ ts, monete, ricette, state }`), al massimo `BACKUP_MAX`; creazione
+  ed eliminazione con un unico aggiornamento a più percorsi. Il nodo non fa parte dello stato: `normalize()` lo scarta e
+  la sincronizzazione per differenze non lo tocca. Il ripristino passa da `normalize()` e si sincronizza per
+  differenze. In ambiente di test e nella sandbox i backup restano in localStorage (`descent_backup_<codice>`). Nota:
+  chi apre la partita scarica anche i backup, quindi i dati iniziali pesano fino a 4 volte la partita.
 - **Regole del database**: sono gestite nella console Firebase e non sono versionate in questo repository.
 
 ## Rilascio

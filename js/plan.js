@@ -1,7 +1,7 @@
 /* Schermata Ottimizza: scelta degli eroi, confronti a due fra i piani candidati, piano
    consigliato, applicazione (intera o fino a uno step) e annullamento. */
 import { HEROES_PER_MISSION } from "./config.js";
-import { EROI, MAT } from "./data.js";
+import { EROI, MAT, sortMatEntries } from "./data.js";
 import { buildDepKey, candidatePlans, diffActions, executionOrder, planSteps } from "./optimizer.js";
 import { transformIfPot } from "./recipes.js";
 import { normalize } from "./schema.js";
@@ -152,8 +152,10 @@ function planStepsHtml(steps) {
   return steps
     .map(({ action: a, sells, buys, coinsAfter }, i) => {
       const prep = [
-        ...Object.entries(sells).map(([m, q]) => `<li>vendi ${esc(q)}× ${MAT[m].nome}${gain(q * MAT[m].vendi)}</li>`),
-        ...Object.entries(buys).map(
+        ...sortMatEntries(Object.entries(sells)).map(
+          ([m, q]) => `<li>vendi ${esc(q)}× ${MAT[m].nome}${gain(q * MAT[m].vendi)}</li>`,
+        ),
+        ...sortMatEntries(Object.entries(buys)).map(
           ([m, q]) => `<li>compra ${esc(q)}× ${MAT[m].nome} dal magazzino${cost(q * MAT[m].compra)}</li>`,
         ),
       ].join("");

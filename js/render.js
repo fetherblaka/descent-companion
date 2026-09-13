@@ -1,7 +1,8 @@
 /* Rendering delle schermate Inventario, Mercato, Ricette e Altro
    (la schermata Ottimizza è in plan.js). */
-import { LOCAL_ONLY } from "./config.js";
+import { BACKUP_MAX, LOCAL_ONLY } from "./config.js";
 import { ACTION_KEYS, ACTION_LABEL, MATERIALI, SFIDANTI_MAX } from "./data.js";
+import { backupSummary, backupsStatus, fmtBackupDate } from "./backup.js";
 import { renderOttimizza } from "./plan.js";
 import { KEY, LS, S } from "./store.js";
 import { $, goScreen, matChips, starsHtml, updateSyncPill } from "./ui.js";
@@ -49,7 +50,8 @@ function renderInventario() {
     ${matRows("own")}`;
 }
 
-const nomeHtml = (r) => esc(r.nome) + (r.pot ? '<span class="pot-mark"> +</span>' : "");
+/* spazio non separabile: il "+" della potenziata non va a capo da solo */
+const nomeHtml = (r) => esc(r.nome) + (r.pot ? '<span class="pot-mark">&nbsp;+</span>' : "");
 
 function prereqHint(r) {
   if (!r.pot || !r.prereq || r.stato === "costruita") return "";
@@ -63,7 +65,8 @@ function prereqHint(r) {
   return "";
 }
 
-function recipeCardHtml(r, ctx) {
+/* num: posizione nella lista mostrata (solo ricette possedute), non un dato della ricetta */
+function recipeCardHtml(r, ctx, num = null) {
   const id = esc(r.id);
   const heroChips = r.eroi.map((h) => `<span class="chip hero">${esc(h)}</span>`).join("");
   const ignored = r.stelle === 0;
@@ -93,7 +96,7 @@ function recipeCardHtml(r, ctx) {
   if (ignored && ctx === "mercato") classes.push("ignored");
   if (ctx === "costruita") classes.push("built");
   return `<div class="${classes.join(" ")}">
-    <div class="row"><h3>${nomeHtml(r)}</h3>${badge}</div>
+    <div class="row"><h3>${num ? `<span class="recipe-num">#${esc(num)}</span> ` : ""}${nomeHtml(r)}</h3>${badge}</div>
     <div class="meta">${starsLine}${coinChip}${matChips(r.materiali)}</div>
     <div>${heroChips}</div>${prereqHint(r)}${actions}</div>`;
 }
@@ -115,17 +118,59 @@ function renderMercato() {
     ${rs.length ? rs.map((r) => recipeCardHtml(r, "mercato")).join("") : `<p class="empty">Nessuna ricetta nel mercato. Aggiungile con "+ Nuova ricetta".</p>`}`;
 }
 
-function renderRicette() {
+/* ── Ricette possedute, con ricerca ── */
+let ownQuery = ""; /* testo cercato: resta quando la schermata viene ridisegnata */
+
+/* minuscole e senza accenti, per cercare "curiosita" e trovare "Curiosità" */
+const foldText = (s) =>
+  String(s)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+/* testo nel nome; un numero (anche "#12") trova la ricetta in quella posizione o nel nome */
+function matchesQuery(r, num, query) {
+  const q = foldText(query.trim());
+  if (!q) return true;
+  const digits = q.replace(/^#/, "");
+  if (/^\d+$/.test(digits) && String(num) === digits) return true;
+  return q.startsWith("#") ? false : foldText(r.nome).includes(q);
+}
+
+function ownListHtml() {
   const all = Object.values(S.state.ricette);
   const acq = all.filter((r) => r.stato === "acquistata").sort(byStarsThenName);
   const cos = all.filter((r) => r.stato === "costruita").sort(byName);
+  /* numero = posizione nella lista completa com'è ordinata ora (acquistate, poi costruite):
+     si ricalcola a ogni ridisegno e la ricerca non lo cambia */
+  const num = new Map([...acq, ...cos].map((r, i) => [r.id, i + 1]));
+  const match = (r) => matchesQuery(r, num.get(r.id), ownQuery);
+  const acqFound = acq.filter(match);
+  const cosFound = cos.filter(match);
+  const searching = !!ownQuery.trim();
+  if (searching && !acqFound.length && !cosFound.length) {
+    return `<p class="empty">Nessuna ricetta trovata per “${esc(ownQuery.trim())}”.</p>`;
+  }
+  const card = (ctx) => (r) => recipeCardHtml(r, ctx, num.get(r.id));
+  return `${acqFound.length ? acqFound.map(card("acquistata")).join("") : `<p class="empty">Nessuna ricetta acquistata${searching ? " corrisponde alla ricerca" : ""}.</p>`}
+    ${cosFound.length ? `<h2>Costruite</h2>` + cosFound.map(card("costruita")).join("") : ""}`;
+}
+
+function renderRicette() {
   $("scr-own").innerHTML = `
     <div class="section-head top">
       <h2>Le nostre ricette</h2>
       <button class="btn gold" data-action="openRecipeForm" data-stato="acquistata">+ Nuova ricetta</button>
     </div>
-    ${acq.length ? acq.map((r) => recipeCardHtml(r, "acquistata")).join("") : `<p class="empty">Nessuna ricetta acquistata.</p>`}
-    ${cos.length ? `<h2>Costruite</h2>` + cos.map((r) => recipeCardHtml(r, "costruita")).join("") : ""}`;
+    <input type="search" id="own-search" class="search-input" placeholder="Cerca per nome o numero (#12)" aria-label="Cerca fra le ricette possedute" autocomplete="off" value="${esc(ownQuery)}" data-input="filterOwnRecipes">
+    <div id="own-list">${ownListHtml()}</div>`;
+}
+
+/* ricerca mentre si scrive: si ridisegna solo l'elenco, il campo mantiene focus e cursore */
+export function filterOwnRecipes(value) {
+  ownQuery = String(value ?? "");
+  const list = $("own-list");
+  if (list) list.innerHTML = ownListHtml();
 }
 
 function sandboxSection() {
@@ -142,8 +187,27 @@ function sandboxSection() {
   return `<h2>Ambiente di test</h2><div class="card">${body}</div>`;
 }
 
+function backupsHtml({ list, loaded, error }) {
+  if (error) return `<p class="hint hint-block warn">⚠ Backup non leggibili: ${esc(error)}</p>`;
+  if (!loaded) return `<p class="hint hint-block">Caricamento dei backup…</p>`;
+  if (!list.length) return `<p class="hint hint-block">Nessun backup per questa partita.</p>`;
+  return list
+    .map((b) => {
+      const date = esc(fmtBackupDate(b.ts));
+      return `<div class="backup-row">
+        <div class="backup-info"><b>${date}</b><span class="hint hint-flush">${esc(backupSummary(b))}</span></div>
+        <div class="backup-actions">
+          <button class="btn" data-action="restoreBackup" data-ts="${esc(b.ts)}">↩ Ripristina</button>
+          <button class="icon-btn" data-action="deleteBackup" data-ts="${esc(b.ts)}" aria-label="Elimina il backup del ${date}" title="Elimina">🗑</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
 function renderImpostazioni() {
   const { pesi, soglia, maxSfidanti, vendiEssenziali } = S.state.impostazioni;
+  const backups = backupsStatus();
   const hasUndo = !!LS.get(KEY.undo(S.gameCode));
   let syncLabel;
   if (S.fb) syncLabel = S.online ? "attiva (Firebase)" : "in connessione…";
@@ -177,6 +241,12 @@ function renderImpostazioni() {
       <div class="inline"><input type="text" id="join-code" placeholder="DSC-XXXX-XXXX"><button class="btn" id="join-btn" data-action="joinGame">Collega</button></div>
     </div>
     ${sandboxSection()}
+    <h2>Backup della partita</h2>
+    <div class="card">
+      <button class="btn gold big btn-flush" data-action="createBackup" ${backups.loaded && !backups.error ? "" : "disabled"}>💾 Crea backup ora</button>
+      ${backupsHtml(backups)}
+      <p class="hint hint-block">${backups.remote ? "Salvati nel database della partita, visibili da tutti i dispositivi collegati" : "Ambiente di test o sandbox: salvati solo su questo dispositivo"}. Al massimo ${BACKUP_MAX}: con un nuovo backup il più vecchio viene eliminato.</p>
+    </div>
     <h2>Sicurezza</h2>
     <div class="card">
       <button class="btn big" ${hasUndo ? "" : "disabled"} data-action="undoApply">↩ Annulla ultima applicazione piano</button>
@@ -198,16 +268,25 @@ const SCREENS = {
 const stale = new Set(Object.keys(SCREENS));
 
 /* il render ricostruisce la schermata: chi usa la tastiera ritrova il focus
-   sull'elemento equivalente (stessa azione e stessi parametri) */
-const focusSignature = (el) => (el?.dataset?.action ? JSON.stringify(el.dataset) : null);
+   sull'elemento equivalente (stessa azione e stessi parametri); in un campo di testo
+   il cursore torna in fondo */
+const focusSignature = (el) => (el?.dataset?.action || el?.dataset?.input ? JSON.stringify(el.dataset) : null);
 
 function renderScreen(id) {
   const screen = $(id);
   const signature = screen.contains(document.activeElement) ? focusSignature(document.activeElement) : null;
   stale.delete(id);
   SCREENS[id]();
-  if (signature) {
-    [...screen.querySelectorAll("[data-action]")].find((el) => focusSignature(el) === signature)?.focus();
+  if (!signature) return;
+  const el = [...screen.querySelectorAll("[data-action], [data-input]")].find((x) => focusSignature(x) === signature);
+  if (!el) return;
+  el.focus();
+  if (el.dataset.input && typeof el.value === "string") {
+    try {
+      el.setSelectionRange(el.value.length, el.value.length);
+    } catch {
+      /* tipo di campo senza selezione */
+    }
   }
 }
 

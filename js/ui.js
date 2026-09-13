@@ -1,6 +1,6 @@
 /* Elementi di interfaccia condivisi: toast, modali, navigazione, indicatore di sync. */
 import { INPUT_FOCUS_DELAY_MS, LOCAL_ONLY, TOAST_MS } from "./config.js";
-import { MAT, MAX_STELLE } from "./data.js";
+import { MAT, MAX_STELLE, sortMatEntries } from "./data.js";
 import { S } from "./store.js";
 import { esc, ownValue } from "./util.js";
 
@@ -177,7 +177,7 @@ export function formStarsHtml(n) {
 }
 
 export function matChips(reqs) {
-  return Object.entries(reqs || {})
+  return sortMatEntries(Object.entries(reqs || {}))
     .filter(([, q]) => q > 0)
     .map(([m, q]) => `<span class="chip">${esc(q)}× ${esc(ownValue(MAT, m)?.nome ?? m)}</span>`)
     .join("");

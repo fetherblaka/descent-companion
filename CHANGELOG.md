@@ -4,6 +4,20 @@ Le modifiche rilevanti di ogni versione pubblicata. Le versioni corrispondono ai
 
 ## [Non rilasciato]
 
+## [1.1.0] - 2026-09-14
+
+### Aggiunto
+
+- Backup della partita in **Altro**: crea, ripristina ed elimina. Si conservano nel database gli ultimi 3 backup,
+  visibili da tutti i dispositivi collegati alla partita.
+- Ricerca testuale nelle ricette possedute, per nome (senza distinguere maiuscole e accenti) o per numero (`#12`).
+- Numero davanti al nome delle ricette possedute: la posizione nella lista così com'è ordinata.
+
+### Modificato
+
+- Materiali base ed essenziali elencati ovunque in ordine alfabetico.
+- Nessuno scorrimento orizzontale su schermi stretti: layout corretto nei punti che potevano superare la larghezza.
+
 ## [1.0.0] - 2026-09-14
 
 ### Corretto

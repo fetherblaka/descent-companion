@@ -19,7 +19,12 @@ export const MATERIALI = [
   { id: "MAT_FORTUNOS", nome: "Fortunos", compra: 30, vendi: 22, ess: true },
   { id: "MAT_IGNOS", nome: "Ignos", compra: 25, vendi: 19, ess: true },
 ];
+/* ovunque i materiali si elencano in ordine alfabetico: prima i base, poi gli essenziali */
+MATERIALI.sort((a, b) => Number(a.ess) - Number(b.ess) || a.nome.localeCompare(b.nome, "it"));
 export const MAT = Object.fromEntries(MATERIALI.map((m) => [m.id, m]));
+const MAT_POS = Object.fromEntries(MATERIALI.map((m, i) => [m.id, i]));
+/* coppie [idMateriale, quantità] nello stesso ordine di MATERIALI */
+export const sortMatEntries = (entries) => [...entries].sort((x, y) => (MAT_POS[x[0]] ?? 99) - (MAT_POS[y[0]] ?? 99));
 
 export const EROI = ["Vaerix", "Brynn", "Syrus", "Galaden", "Sorte", "Kehli"];
 export const HERO_SHORTCUTS = {

@@ -1,6 +1,7 @@
 /* Collegamento degli eventi.
-   Nessun handler inline: gli elementi dichiarano data-action (click) o
-   data-change (change) e i parametri in altri data-*. I parametri arrivano da
+   Nessun handler inline: gli elementi dichiarano data-action (click),
+   data-change (change) o data-input (input, mentre si scrive) e i parametri in
+   altri data-*. I parametri arrivano da
    dataset, già decodificati e mai interpretati come codice, quindi i dati remoti
    (nomi, id) non possono iniettare script. */
 import {
@@ -34,7 +35,8 @@ import {
   togglePotUI,
 } from "./recipes.js";
 import { sandboxExit, sandboxPick, sandboxPickManual, sandboxPicker, sandboxReload } from "./sandbox.js";
-import { showScreen } from "./render.js";
+import { createBackup, deleteBackup, restoreBackup } from "./backup.js";
+import { filterOwnRecipes, showScreen } from "./render.js";
 import { closeDyn, topModal, trapFocus } from "./ui.js";
 import { ownValue } from "./util.js";
 
@@ -60,6 +62,9 @@ const CLICK_ACTIONS = {
   newGame: () => newGame(),
   joinGame: () => joinGame(),
   undoApply: () => undoApply(),
+  createBackup: () => createBackup(),
+  restoreBackup: (d) => restoreBackup(Number(d.ts)),
+  deleteBackup: (d) => deleteBackup(Number(d.ts)),
   sandboxPicker: () => sandboxPicker(),
   sandboxPick: (d) => sandboxPick(d.code),
   sandboxPickManual: () => sandboxPickManual(),
@@ -86,6 +91,10 @@ const CHANGE_ACTIONS = {
   togglePotUI: () => togglePotUI(),
 };
 
+const INPUT_ACTIONS = {
+  filterOwnRecipes: (d, el) => filterOwnRecipes(el.value),
+};
+
 export function installEvents() {
   document.addEventListener("click", (e) => {
     /* tocco sullo sfondo di un modale chiudibile */
@@ -102,6 +111,12 @@ export function installEvents() {
     const el = e.target.closest("[data-change]");
     if (!el) return;
     const fn = ownValue(CHANGE_ACTIONS, el.dataset.change);
+    if (fn) fn(el.dataset, el);
+  });
+  document.addEventListener("input", (e) => {
+    const el = e.target.closest?.("[data-input]");
+    if (!el) return;
+    const fn = ownValue(INPUT_ACTIONS, el.dataset.input);
     if (fn) fn(el.dataset, el);
   });
   document.addEventListener("keydown", (e) => {

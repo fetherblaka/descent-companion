@@ -35,6 +35,7 @@ export const INPUT_FOCUS_DELAY_MS = 50;
 
 /* ── Limiti ── */
 export const RECENT_GAMES_MAX = 5; /* partite tenute in cache su questo dispositivo */
+export const BACKUP_MAX = 3; /* backup conservati per partita su questo dispositivo */
 export const SANDBOX_RECENT_MAX = 8; /* codici proposti nel picker della sandbox */
 /* lavoro massimo del branch & bound, in azioni esaminate dai limiti superiori: oltre, si
    tiene il miglior piano trovato (non garantito ottimo) */

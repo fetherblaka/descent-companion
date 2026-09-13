@@ -17,11 +17,13 @@ export const S = {
 
 const STATE_PREFIX = "descent_state_";
 const UNDO_PREFIX = "descent_undo_";
+const BACKUP_PREFIX = "descent_backup_"; /* non rimossi dalla pulizia delle partite non recenti */
 const SANDBOX_PREFIX = "sbx_";
 export const KEY = {
   code: "descent_code",
   state: (code) => STATE_PREFIX + code,
   undo: (code) => UNDO_PREFIX + code,
+  backups: (code) => BACKUP_PREFIX + code,
   recentGames: "descent_recent_codes",
   sandboxRecent: "descent_sbx_recent",
   sandboxSession: "descent_sbx_code",

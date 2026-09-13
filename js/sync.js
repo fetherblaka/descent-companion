@@ -146,7 +146,8 @@ function onRemoteValue(code, snap) {
   const base = normalize(snap.val());
   synced = canonState(base);
   const next = pending.length ? normalize(applyOps(base, pending)) : base;
-  /* l'eco delle proprie scritture non cambia nulla: lo stato resta lo stesso oggetto */
+  /* l'eco delle proprie scritture (e i cambi dei backup, esterni allo stato) non cambiano
+     nulla: lo stato resta lo stesso oggetto */
   if (stateSig(next) === stateSig(S.state)) return;
   S.state = next;
   LS.set(KEY.state(code), JSON.stringify(S.state));
