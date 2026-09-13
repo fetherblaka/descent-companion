@@ -605,6 +605,33 @@ input.num-input {
 .plan-step:last-child {
   border: none;
 }
+.plan-step.skipped {
+  opacity: 0.4;
+}
+.plan-body {
+  flex: 1;
+  min-width: 0;
+}
+.plan-prep {
+  list-style: none;
+  margin: 3px 0 1px;
+}
+.plan-prep li {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 1px 0;
+}
+.plan-prep li::before {
+  content: "↳";
+}
+.plan-step .plan-prep .amt {
+  font-size: 13px;
+}
+.plan-upto {
+  margin-bottom: 6px;
+}
 .plan-n {
   width: 24px;
   height: 24px;

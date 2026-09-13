@@ -2,10 +2,20 @@
    Ogni dato che entra nell'app (cache locale, server, sandbox, annullamento)
    passa da normalize(), che applica le migrazioni mancanti e riporta ogni campo
    a un tipo e un intervallo validi, scartando ciò che non è riconosciuto. */
-import { EROI, MAT, MATERIALI, MAX_STELLE, PREREQ_TIPI, RECIPE_STATI, SOGLIA_MAX, defaultState } from "./data.js";
+import {
+  EROI,
+  MAT,
+  MATERIALI,
+  MAX_STELLE,
+  PREREQ_TIPI,
+  RECIPE_STATI,
+  SFIDANTI_MAX,
+  SOGLIA_MAX,
+  defaultState,
+} from "./data.js";
 import { isPlainObj, ownValue } from "./util.js";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 3;
 
 /* Firebase restituisce gli array con buchi come oggetti: si accettano entrambi */
 const listOf = (v) => (Array.isArray(v) ? v : isPlainObj(v) ? Object.values(v) : []);
@@ -36,6 +46,19 @@ const MIGRATIONS = [
       Object.values(s.ricette).forEach((r) => {
         if (isPlainObj(r) && r.eroi != null) r.eroi = listOf(r.eroi).map(renameHero);
       });
+    }
+  },
+  /* 1 → 2: nuova impostazione maxSfidanti (piani candidati per elaborazione). La soglia
+     salvata non si tocca: i nuovi default (soglia 5%, pesi) valgono solo per le partite nuove. */
+  (s) => {
+    if (isPlainObj(s.impostazioni) && s.impostazioni.maxSfidanti == null) {
+      s.impostazioni = { ...s.impostazioni, maxSfidanti: defaultState().impostazioni.maxSfidanti };
+    }
+  },
+  /* 2 → 3: nuova impostazione vendiEssenziali (vendita degli essenziali nel piano), spenta */
+  (s) => {
+    if (isPlainObj(s.impostazioni) && s.impostazioni.vendiEssenziali == null) {
+      s.impostazioni = { ...s.impostazioni, vendiEssenziali: false };
     }
   },
 ];
@@ -116,6 +139,8 @@ export function normalize(raw) {
     impostazioni: {
       pesi: Object.fromEntries(Object.entries(d.impostazioni.pesi).map(([k, def]) => [k, nonNegative(pesi[k], def)])),
       soglia: Math.min(SOGLIA_MAX, nonNegative(imp.soglia, d.impostazioni.soglia)),
+      maxSfidanti: Math.min(SFIDANTI_MAX, count(imp.maxSfidanti, d.impostazioni.maxSfidanti)),
+      vendiEssenziali: imp.vendiEssenziali === true,
     },
   };
   cleanOrphanPrereqs(out);

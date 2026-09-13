@@ -33,18 +33,19 @@ export const RECIPE_STATI = ["mercato", "acquistata", "costruita"];
 export const PREREQ_TIPI = ["posseduta", "mancante", "ricetta"];
 export const MAX_STELLE = 3;
 
-/* rank 1 = priorità massima; l'ordine delle chiavi è quello mostrato nelle impostazioni */
-export const RANK = { acq3: 1, acq2: 2, cos3: 3, acq1: 4, cos2: 5, cos1: 6 };
-export const RANK_KEYS = Object.keys(RANK);
-export const RANK_LABEL = {
+/* classi di azione con un peso nelle impostazioni, nell'ordine in cui sono mostrate
+   (gli step del piano seguono invece l'ordine dei pesi) */
+export const ACTION_KEYS = ["acq3", "acq2", "acq1", "cos3", "cos2", "cos1"];
+export const ACTION_LABEL = {
   acq3: "Acquisto ★★★",
   acq2: "Acquisto ★★",
-  cos3: "Costruzione ★★★",
   acq1: "Acquisto ★",
+  cos3: "Costruzione ★★★",
   cos2: "Costruzione ★★",
   cos1: "Costruzione ★",
 };
 export const SOGLIA_MAX = 100; /* soglia dei piani "quasi pari", in % */
+export const SFIDANTI_MAX = 10; /* piani candidati al massimo per elaborazione (n candidati = n−1 scelte) */
 
 /* magazzino di default: materiali base a MAGAZZINO_BASE, essenziali a 0 */
 export const MAGAZZINO_BASE = 10;
@@ -58,7 +59,14 @@ export function defaultState() {
     magazzino: defaultMagazzino(),
     ricette: {},
     eroiSel: ["Vaerix", "Brynn", "Syrus", "Galaden"],
-    impostazioni: { pesi: { acq3: 8, acq2: 5, cos3: 4, acq1: 3, cos2: 2, cos1: 1 }, soglia: 10 },
+    impostazioni: {
+      /* acquisto molto più della costruzione (se non si compra subito la ricetta si perde);
+         una ★★★ vale più di due ★★, una ★★ più di tre ★ */
+      pesi: { acq3: 35, acq2: 16, acq1: 5, cos3: 10, cos2: 4, cos1: 1 },
+      soglia: 5,
+      vendiEssenziali: false /* se attivo, gli essenziali si vendono dopo i materiali base */,
+      maxSfidanti: 4,
+    },
   };
 }
 

@@ -11,11 +11,13 @@ import {
   joinGame,
   newGame,
   resetMagazzino,
+  setMaxSfidanti,
   setPeso,
   setSoglia,
+  setVendiEssenziali,
   toggleHero,
 } from "./game.js";
-import { chooseOption, confirmApplyPlan, resetOptimizer, runOptimizer, undoApply } from "./plan.js";
+import { chooseOption, confirmApplyPlan, resetOptimizer, runOptimizer, setPlanUpto, undoApply } from "./plan.js";
 import {
   addMatRow,
   deleteRecipe,
@@ -78,6 +80,9 @@ const CLICK_ACTIONS = {
 const CHANGE_ACTIONS = {
   setPeso: (d, el) => setPeso(d.key, el.value),
   setSoglia: (d, el) => setSoglia(el.value),
+  setMaxSfidanti: (d, el) => setMaxSfidanti(el.value),
+  setVendiEssenziali: (d, el) => setVendiEssenziali(el.checked),
+  setPlanUpto: (d, el) => setPlanUpto(el.value),
   togglePotUI: () => togglePotUI(),
 };
 

@@ -1,7 +1,7 @@
 /* Rendering delle schermate Inventario, Mercato, Ricette e Altro
    (la schermata Ottimizza è in plan.js). */
 import { LOCAL_ONLY } from "./config.js";
-import { MATERIALI, RANK_KEYS, RANK_LABEL } from "./data.js";
+import { ACTION_KEYS, ACTION_LABEL, MATERIALI, SFIDANTI_MAX } from "./data.js";
 import { renderOttimizza } from "./plan.js";
 import { KEY, LS, S } from "./store.js";
 import { $, goScreen, matChips, starsHtml, updateSyncPill } from "./ui.js";
@@ -143,22 +143,28 @@ function sandboxSection() {
 }
 
 function renderImpostazioni() {
-  const { pesi, soglia } = S.state.impostazioni;
+  const { pesi, soglia, maxSfidanti, vendiEssenziali } = S.state.impostazioni;
   const hasUndo = !!LS.get(KEY.undo(S.gameCode));
   let syncLabel;
   if (S.fb) syncLabel = S.online ? "attiva (Firebase)" : "in connessione…";
   else syncLabel = LOCAL_ONLY ? "disattivata — ambiente di test" : "non disponibile — solo locale";
   $("scr-set").innerHTML = `
     <h2>Pesi delle azioni</h2>
-    <p class="hint">Modificabili se l'app fa troppe (o troppo poche) domande. Rispetta la gerarchia: valori decrescenti dall'alto in basso.</p>
+    <p class="hint">Valore di ogni azione: il piano consigliato è quello con la somma dei pesi più alta realizzabile con monete, materiali e magazzino. Gli step del piano seguono l'ordine dei pesi, dal più alto.</p>
     <div class="card settings-grid">
-      ${RANK_KEYS.map((k) => `<label for="peso-${k}">${RANK_LABEL[k]}</label><input type="number" id="peso-${k}" min="0" value="${esc(pesi[k])}" data-change="setPeso" data-key="${k}">`).join("")}
+      ${ACTION_KEYS.map((k) => `<label for="peso-${k}">${ACTION_LABEL[k]}</label><input type="number" id="peso-${k}" min="0" value="${esc(pesi[k])}" data-change="setPeso" data-key="${k}">`).join("")}
+    </div>
+    <h2>Vendite nel piano</h2>
+    <div class="card">
+      <div class="checkline"><input type="checkbox" id="vendi-ess" ${vendiEssenziali ? "checked" : ""} data-change="setVendiEssenziali"><label for="vendi-ess">Vendi anche gli essenziali</label></div>
+      <p class="hint hint-block">Il piano vende sempre prima i materiali base, dal più abbondante. Se attivo, quando i base vendibili sono finiti vende anche gli essenziali non necessari alle costruzioni del piano.</p>
     </div>
     <h2>Popup di scelta</h2>
     <div class="card settings-grid">
-      <label for="soglia">Soglia piani equivalenti</label><input type="number" id="soglia" min="0" max="100" value="${esc(soglia)}" data-change="setSoglia">
+      <label for="soglia">Soglia piani equivalenti (%)</label><input type="number" id="soglia" min="0" max="100" value="${esc(soglia)}" data-change="setSoglia">
+      <label for="max-sfidanti">Sfidanti massimi</label><input type="number" id="max-sfidanti" min="0" max="${SFIDANTI_MAX}" step="1" value="${esc(maxSfidanti)}" data-change="setMaxSfidanti">
     </div>
-    <p class="hint">% di distanza entro cui due piani sono "quasi pari" e l'app chiede a voi.</p>
+    <p class="hint">Sfidanti massimi: quanti piani, compreso il migliore, vengono estratti fra quelli con valore entro la soglia % dal migliore. Si confrontano a due e il piano scelto passa al confronto successivo: con N piani bastano N−1 scelte (0 o 1 = nessuna domanda).</p>
     <h2>Partita condivisa</h2>
     <div class="card">
       <div class="summary-row"><span>Codice partita</span><b>${esc(S.gameCode)}</b></div>

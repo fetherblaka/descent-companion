@@ -1,8 +1,8 @@
-/* Schermata Ottimizza: scelta degli eroi, domande all'utente, piano consigliato,
-   applicazione del piano e suo annullamento. */
-import { HEROES_PER_MISSION, OPTIMIZER_MAX_CHOICES } from "./config.js";
+/* Schermata Ottimizza: scelta degli eroi, confronti a due fra i piani candidati, piano
+   consigliato, applicazione (intera o fino a uno step) e annullamento. */
+import { HEROES_PER_MISSION } from "./config.js";
 import { EROI, MAT } from "./data.js";
-import { buildDepKey, diffActions, findChallenger, orderBuilds, searchPlans } from "./optimizer.js";
+import { buildDepKey, candidatePlans, diffActions, executionOrder, planSteps } from "./optimizer.js";
 import { transformIfPot } from "./recipes.js";
 import { normalize } from "./schema.js";
 import { KEY, LS, S } from "./store.js";
@@ -12,14 +12,21 @@ import { $, askConfirm, closeDyn, heroCardHtml, infoModal, openModal, toast } fr
 import { esc, isPlainObj } from "./util.js";
 
 let currentPlan = null; /* piano mostrato (null anche per "nessuna azione consigliata") */
+let currentSteps = []; /* step di esecuzione del piano mostrato */
+let planUpto = 0; /* step da applicare: i primi planUpto */
 let planSig = null; /* firma dello stato su cui è stato calcolato; null = nessun piano mostrato */
 let planStaleNotice = false; /* avviso "piano non più valido" */
-let optCtx = null; /* elaborazione in corso: scelte fatte e firma dello stato di partenza */
-let choiceA = null;
-let choiceB = null;
+/* elaborazione in corso: piani candidati, prossimo da confrontare, piano che ha vinto
+   finora e firma dello stato di partenza */
+let optCtx = null;
+
+const fmtValue = (v) => Math.round(v * 100) / 100;
+const isPurchase = (a) => a.tipo === "acquisto";
 
 function clearPlan() {
   currentPlan = null;
+  currentSteps = [];
+  planUpto = 0;
   planSig = null;
 }
 
@@ -56,7 +63,7 @@ export function renderOttimizza() {
       <button class="btn gold big" id="btn-elab" ${ready ? "" : "disabled"} data-action="runOptimizer">⚡ Elabora consigli</button>
     </div>
     <div id="opt-plan"></div>`;
-  if (keepPlan) showPlan(currentPlan);
+  if (keepPlan) showPlan(currentPlan, planUpto);
 }
 
 export function resetOptimizer() {
@@ -73,47 +80,46 @@ export function runOptimizer() {
     return;
   }
   planStaleNotice = false;
-  optCtx = { include: new Set(), exclude: new Set(), step: 0, sig: stateSig(S.state) };
-  optimizerLoop();
-}
-
-function optimizerLoop() {
-  const plans = searchPlans(S.state, optCtx.include, optCtx.exclude);
-  if (!plans.length) {
-    showPlan(null);
+  /* fino a maxSfidanti piani entro la soglia, dal migliore: con N piani bastano N−1 scelte */
+  const cands = candidatePlans(S.state, S.state.impostazioni.maxSfidanti);
+  if (cands.length < 2) {
+    optCtx = null;
+    showPlan(cands[0] || null);
     return;
   }
-  const challenger = findChallenger(S.state, plans);
-  if (!challenger || optCtx.step >= OPTIMIZER_MAX_CHOICES) {
-    showPlan(plans[0]);
-    return;
-  }
-  optCtx.step++;
-  showChoicePopup(plans[0], challenger.plan, challenger.tipo);
+  optCtx = { cands, next: 1, winner: cands[0], sig: stateSig(S.state) };
+  showChoicePopup();
 }
 
-function planOptionHtml(pl, idx) {
-  const items = pl.actions.map((a) => `<li>· ${esc(a.label)}</li>`).join("");
-  const n = pl.actions.length;
+const soldUnits = (steps) => steps.reduce((s, x) => s + Object.values(x.sells).reduce((t, q) => t + q, 0), 0);
+
+/* card di un piano nel confronto: solo le azioni che l'altro piano non ha */
+function planOptionHtml(pl, other, idx) {
+  const own = executionOrder(S.state, diffActions(pl, other));
+  const items = own.map((a) => `<li>· ${esc(a.label)}</li>`).join("");
+  const steps = planSteps(S.state, pl);
+  const sold = soldUnits(steps);
+  const coinsAfter = steps.length ? steps.at(-1).coinsAfter : S.state.monete;
+  const n = own.length;
   return `<div class="opt-card" role="button" tabindex="0" data-action="chooseOption" data-idx="${idx}">
     <b>${idx === 0 ? "A" : "B"} · ${n} azion${n === 1 ? "e" : "i"}</b>
     <ul>${items}</ul>
-    <div class="val">Valore ${esc(pl.value)} · spesa netta 🪙 ${esc(pl.spend)} · restano 🪙 ${esc(pl.coinsAfter)}</div></div>`;
+    <div class="val">Valore ${esc(fmtValue(pl.value))}${sold ? ` · vende ${esc(sold)} materiali` : ""} · restano 🪙 ${esc(coinsAfter)}</div></div>`;
 }
 
-function showChoicePopup(a, b, tipo) {
-  choiceA = a;
-  choiceB = b;
-  const title =
-    tipo === "rango" ? "conflitto di priorità" : `piani quasi pari (< ${esc(S.state.impostazioni.soglia)}%)`;
-  const sub =
-    tipo === "rango"
-      ? 'Più azioni "piccole" valgono più di una "grande": decidete voi.'
-      : "Due strade con valore molto vicino: decidete voi.";
+/* confronto fra il piano che ha vinto finora e il prossimo candidato */
+function showChoicePopup() {
+  const { cands, next, winner: a } = optCtx;
+  const b = cands[next];
+  const common = a.actions.length - diffActions(a, b).length;
+  const commonNote = common
+    ? ` ${common === 1 ? "L'azione" : `Le ${common} azioni`} in comune ai due piani non ${common === 1 ? "è mostrata" : "sono mostrate"}.`
+    : "";
   openModal(
     "modal-choice",
-    `<h3>Scelta ${optCtx.step} — ${title}</h3><p class="sub">${sub}</p>
-    ${planOptionHtml(a, 0)}${planOptionHtml(b, 1)}
+    `<h3>Scelta ${next} di ${cands.length - 1} — piani quasi pari</h3>
+    <p class="sub">${cands.length} piani con valore entro il ${esc(S.state.impostazioni.soglia)}% dal migliore: il piano scelto passa al confronto successivo.${commonNote}</p>
+    ${planOptionHtml(a, b, 0)}${planOptionHtml(b, a, 1)}
     <button class="btn big" data-action="closeModal" data-target="modal-choice">✕ Interrompi elaborazione</button>`,
   );
 }
@@ -127,86 +133,118 @@ export function chooseOption(idx) {
     toast("I dati sono cambiati: elabora di nuovo il piano");
     return;
   }
-  const chosen = idx === 0 ? choiceA : choiceB;
-  const other = idx === 0 ? choiceB : choiceA;
-  diffActions(chosen, other).forEach((a) => optCtx.include.add(a.key));
-  diffActions(other, chosen).forEach((a) => optCtx.exclude.add(a.key));
+  if (idx === 1) optCtx.winner = optCtx.cands[optCtx.next];
+  optCtx.next++;
   closeDyn("modal-choice");
-  optimizerLoop();
+  if (optCtx.next < optCtx.cands.length) {
+    showChoicePopup();
+    return;
+  }
+  const { winner } = optCtx;
+  optCtx = null;
+  showPlan(winner);
 }
 
-function planStepsHtml(pl) {
+function planStepsHtml(steps) {
   const st = S.state;
-  let n = 0;
-  const step = (txt, sub, amountHtml) => {
-    n++;
-    const subHtml = sub ? `<br><span class="hint hint-flush">${sub}</span>` : "";
-    return `<div class="plan-step"><div class="plan-n">${n}</div><div><b>${txt}</b>${subHtml}</div>${amountHtml}</div>`;
-  };
   const gain = (v) => `<span class="amt pos">+${esc(v)}</span>`;
   const cost = (v) => `<span class="amt neg">−${esc(v)}</span>`;
-  const steps = [];
-  Object.entries(pl.sells).forEach(([m, q]) => {
-    steps.push(step(`Vendi ${esc(q)}× ${MAT[m].nome}`, "per coprire le spese", gain(q * MAT[m].vendi)));
-  });
-  Object.entries(pl.buys).forEach(([m, q]) => {
-    steps.push(step(`Compra ${esc(q)}× ${MAT[m].nome}`, "dal magazzino, per le costruzioni", cost(q * MAT[m].compra)));
-  });
-  pl.actions
-    .filter((a) => a.tipo === "acquisto")
-    .sort((a, b) => a.rank - b.rank)
-    .forEach((a) => steps.push(step(esc(a.label), "", cost(a.r.costo))));
-  orderBuilds(
-    st,
-    pl.actions.filter((a) => a.tipo === "costruzione"),
-  ).forEach((a) => {
-    const per = a.r.eroi.filter((h) => st.eroiSel.includes(h)).join(", ");
-    const depNote = buildDepKey(st, a) ? " · dopo la costruzione della versione normale" : "";
-    steps.push(step(esc(a.label), "per " + esc(per) + depNote, `<span class="amt build">⚒</span>`));
-  });
-  return steps.join("");
+  return steps
+    .map(({ action: a, sells, buys, coinsAfter }, i) => {
+      const prep = [
+        ...Object.entries(sells).map(([m, q]) => `<li>vendi ${esc(q)}× ${MAT[m].nome}${gain(q * MAT[m].vendi)}</li>`),
+        ...Object.entries(buys).map(
+          ([m, q]) => `<li>compra ${esc(q)}× ${MAT[m].nome} dal magazzino${cost(q * MAT[m].compra)}</li>`,
+        ),
+      ].join("");
+      let sub = "";
+      let amount = cost(a.r.costo);
+      if (!isPurchase(a)) {
+        const per = a.r.eroi.filter((h) => st.eroiSel.includes(h)).join(", ");
+        const depNote = buildDepKey(st, a) ? " · dopo la costruzione della versione normale" : "";
+        sub = `<br><span class="hint hint-flush">per ${esc(per)}${depNote}</span>`;
+        amount = `<span class="amt build">⚒</span>`;
+      }
+      return `<div class="plan-step">
+        <div class="plan-n">${i + 1}</div>
+        <div class="plan-body"><b>${esc(a.label)}</b>${sub}${prep ? `<ul class="plan-prep">${prep}</ul>` : ""}
+          <span class="hint hint-flush">restano 🪙 ${esc(coinsAfter)}</span></div>
+        ${amount}</div>`;
+    })
+    .join("");
 }
 
-function showPlan(pl) {
+function showPlan(pl, upto) {
   currentPlan = pl;
+  currentSteps = pl ? planSteps(S.state, pl) : [];
+  const total = currentSteps.length;
+  planUpto = upto >= 1 && upto <= total ? upto : total;
   planSig = stateSig(S.state);
   $("opt-step1").hidden = true;
   const el = $("opt-plan");
-  if (!pl || !pl.actions.length) {
+  if (!total) {
     el.innerHTML = `<h2>Piano consigliato</h2>
-      <p class="empty">Nessuna azione consigliata con le risorse attuali.<br>Controlla monete, magazzino e priorità (le ricette a 0 stelle sono ignorate).</p>
+      <p class="empty">Nessuna azione consigliata con le risorse attuali.<br>Controlla monete, magazzino, pesi e priorità (le ricette a 0 stelle sono ignorate).</p>
       <button class="btn big" data-action="resetOptimizer">↺ Ricomincia</button>`;
     return;
   }
-  const nAcquisti = pl.actions.filter((a) => a.tipo === "acquisto").length;
+  const options = currentSteps
+    .map((_, i) => {
+      const k = total - i;
+      return `<option value="${k}">${k === total ? `Tutto il piano (${total} step)` : `Fino allo step ${k}`}</option>`;
+    })
+    .join("");
   el.innerHTML = `<h2>Piano consigliato</h2>
-    <p class="hint">Ordine di esecuzione al tavolo. Valore totale del piano: <b class="text-gold">${esc(pl.value)} punti</b>.</p>
-    <div class="card">${planStepsHtml(pl)}</div>
+    <p class="hint">Ordine di esecuzione al tavolo: dal peso più alto al più basso (un'azione segue quelle da cui dipende), con vendite e acquisti di materiali quando servono. Valore totale del piano: <b class="text-gold">${esc(fmtValue(pl.value))} punti</b>.</p>
+    ${pl.exact ? "" : `<p class="hint warn">⚠ Ricerca fermata al limite di calcolo: il piano è valido ma potrebbe non essere il migliore.</p>`}
+    <div class="card" id="plan-steps">${planStepsHtml(currentSteps)}</div>
     <div class="card">
-      <div class="summary-row"><span>Monete: prima → dopo</span><b>${esc(S.state.monete)} → 🪙 ${esc(pl.coinsAfter)}</b></div>
-      <div class="summary-row"><span>Azioni</span><b>${nAcquisti} acquisti · ${pl.actions.length - nAcquisti} costruzioni</b></div>
+      <label for="plan-upto">Da applicare</label>
+      <select id="plan-upto" class="plan-upto" data-change="setPlanUpto">${options}</select>
+      <div class="summary-row"><span>Monete: prima → dopo</span><b id="plan-coins"></b></div>
+      <div class="summary-row"><span>Azioni</span><b id="plan-count"></b></div>
     </div>
-    <button class="btn teal big" data-action="confirmApplyPlan">✓ Applica piano (aggiorna inventario)</button>
+    <button class="btn teal big" data-action="confirmApplyPlan">✓ Applica (aggiorna inventario)</button>
     <button class="btn big" data-action="resetOptimizer">↺ Ricomincia</button>`;
+  updateUptoView();
+}
+
+/* scelta di quanti step applicare: gli step esclusi restano visibili ma attenuati */
+export function setPlanUpto(value) {
+  const k = parseInt(value, 10);
+  if (!(k >= 1 && k <= currentSteps.length)) return;
+  planUpto = k;
+  updateUptoView();
+}
+
+function updateUptoView() {
+  document
+    .querySelectorAll("#plan-steps .plan-step")
+    .forEach((step, i) => step.classList.toggle("skipped", i >= planUpto));
+  $("plan-upto").value = String(planUpto);
+  const done = currentSteps.slice(0, planUpto);
+  const nAcquisti = done.filter((s) => isPurchase(s.action)).length;
+  $("plan-coins").textContent = `${S.state.monete} → 🪙 ${done.at(-1).coinsAfter}`;
+  $("plan-count").textContent = `${nAcquisti} acquisti · ${done.length - nAcquisti} costruzioni`;
 }
 
 export function confirmApplyPlan() {
-  const pl = currentPlan;
-  if (!pl) return;
-  const nAz = pl.actions.length + Object.keys(pl.sells).length + Object.keys(pl.buys).length;
-  const names = (tipo) =>
-    pl.actions
-      .filter((a) => a.tipo === tipo)
-      .map((a) => esc(a.r.nome) + (a.r.pot ? " +" : ""))
+  if (!currentPlan || !currentSteps.length) return;
+  const total = currentSteps.length;
+  const done = currentSteps.slice(0, planUpto);
+  const names = (purchase) =>
+    done
+      .filter((s) => isPurchase(s.action) === purchase)
+      .map((s) => esc(s.action.r.nome) + (s.action.r.pot ? " +" : ""))
       .join(", ");
-  const acq = names("acquisto");
-  const cos = names("costruzione");
+  const acq = names(true);
+  const cos = names(false);
   askConfirm(
-    "Applicare il piano?",
+    planUpto === total ? "Applicare il piano?" : `Applicare il piano fino allo step ${esc(planUpto)}?`,
     "L'inventario, il mercato e le ricette verranno aggiornati automaticamente.",
     `<div class="card summary-card">
-      <div class="summary-row"><span>Azioni da eseguire</span><b>${nAz}</b></div>
-      <div class="summary-row"><span>Monete</span><b>${esc(S.state.monete)} → 🪙 ${esc(pl.coinsAfter)}</b></div>
+      <div class="summary-row"><span>Step da eseguire</span><b>${esc(planUpto)} di ${esc(total)}</b></div>
+      <div class="summary-row"><span>Monete</span><b>${esc(S.state.monete)} → 🪙 ${esc(done.at(-1).coinsAfter)}</b></div>
       ${acq ? `<div class="summary-row"><span>Ricette acquistate</span><b>${acq}</b></div>` : ""}
       ${cos ? `<div class="summary-row"><span>Ricette costruite</span><b>${cos}</b></div>` : ""}
     </div>`,
@@ -216,8 +254,7 @@ export function confirmApplyPlan() {
 }
 
 function applyPlan() {
-  const pl = currentPlan;
-  if (!pl) return;
+  if (!currentPlan || !currentSteps.length) return;
   const st = S.state;
   if (planSig !== stateSig(st)) {
     toast("I dati sono cambiati: elabora di nuovo il piano");
@@ -225,28 +262,24 @@ function applyPlan() {
     return;
   }
   const before = canonState(st);
-  Object.entries(pl.sells).forEach(([m, q]) => {
-    st.materiali[m] = Math.max(0, (st.materiali[m] || 0) - q);
-    st.magazzino[m] = (st.magazzino[m] || 0) + q;
-    st.monete += q * MAT[m].vendi;
-  });
-  Object.entries(pl.buys).forEach(([m, q]) => {
-    st.monete -= q * MAT[m].compra;
-    st.magazzino[m] = Math.max(0, (st.magazzino[m] || 0) - q);
-    st.materiali[m] = (st.materiali[m] || 0) + q;
-  });
-  pl.actions
-    .filter((a) => a.tipo === "acquisto")
-    .forEach((a) => {
-      st.monete -= a.r.costo;
-      if (st.ricette[a.r.id]) st.ricette[a.r.id].stato = "acquistata";
+  currentSteps.slice(0, planUpto).forEach(({ action: a, sells, buys }) => {
+    Object.entries(sells).forEach(([m, q]) => {
+      st.materiali[m] = Math.max(0, (st.materiali[m] || 0) - q);
+      st.magazzino[m] = (st.magazzino[m] || 0) + q;
+      st.monete += q * MAT[m].vendi;
     });
-  orderBuilds(
-    st,
-    pl.actions.filter((a) => a.tipo === "costruzione"),
-  ).forEach((a) => {
+    Object.entries(buys).forEach(([m, q]) => {
+      st.monete -= q * MAT[m].compra;
+      st.magazzino[m] = Math.max(0, (st.magazzino[m] || 0) - q);
+      st.materiali[m] = (st.materiali[m] || 0) + q;
+    });
     const r = st.ricette[a.r.id];
     if (!r) return;
+    if (isPurchase(a)) {
+      st.monete -= r.costo;
+      r.stato = "acquistata";
+      return;
+    }
     Object.entries(r.materiali).forEach(([m, q]) => {
       st.materiali[m] = Math.max(0, (st.materiali[m] || 0) - q);
     });

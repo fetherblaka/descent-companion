@@ -36,6 +36,8 @@ export const INPUT_FOCUS_DELAY_MS = 50;
 /* ── Limiti ── */
 export const RECENT_GAMES_MAX = 5; /* partite tenute in cache su questo dispositivo */
 export const SANDBOX_RECENT_MAX = 8; /* codici proposti nel picker della sandbox */
-export const OPTIMIZER_MAX_CANDIDATES = 16; /* la ricerca esaustiva prova 2^n combinazioni */
-export const OPTIMIZER_MAX_CHOICES = 6; /* domande massime all'utente per elaborazione */
+/* lavoro massimo del branch & bound, in azioni esaminate dai limiti superiori: oltre, si
+   tiene il miglior piano trovato (non garantito ottimo) */
+export const OPTIMIZER_MAX_WORK = 20000000;
+export const OPTIMIZER_CHALLENGER_WORK = 2000000; /* per ogni ramo della ricerca dei piani candidati */
 export const HEROES_PER_MISSION = 4;

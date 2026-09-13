@@ -10,7 +10,7 @@ tramite Firebase Realtime Database.
 - **Mercato**: magazzino dei materiali acquistabili e ricette in vendita, con priorità a stelle.
 - **Ricette**: ricette acquistate e costruite, versioni potenziate collegate alla versione normale.
 - **Ottimizza**: scelta dei 4 eroi in missione e piano consigliato (vendite, acquisti, costruzioni), applicabile
-  all'inventario con un tocco e annullabile.
+  all'inventario per intero o fino a uno step, e annullabile. Vedi [Ottimizzatore](#ottimizzatore).
 - **Partita condivisa**: ogni partita ha un codice `DSC-XXXX-XXXX`; chi lo inserisce vede e modifica gli stessi dati.
 
 ## Ambienti
@@ -86,6 +86,25 @@ Convenzioni del codice:
 - **Accessibilità**: i controlli che non sono `<button>` hanno `role="button"` e `tabindex="0"`; i modali si aprono
   con `openModal()`, che gestisce focus, `inert` e chiusura.
 - Testi dell'interfaccia e commenti in italiano.
+
+## Ottimizzatore
+
+- **Valore di un piano**: somma dei pesi delle sue azioni (impostazioni, una per classe: acquisto/costruzione × stelle).
+- **Risorse**: monete più il valore di vendita dei materiali base; gli essenziali solo se è attiva l'impostazione
+  **Vendi anche gli essenziali** (default spenta). I materiali mancanti
+  per una costruzione si comprano dal magazzino, nei limiti della sua disponibilità.
+- **Ricerca**: branch & bound in [js/optimizer.js](js/optimizer.js), con limite superiore dallo zaino frazionario (i
+  costi dei materiali sono convessi). Il limite tiene conto anche delle unità disponibili di ogni materiale (rilassamento lagrangiano), che conta quando a
+  mancare sono le essenze e non le monete. Oltre `OPTIMIZER_MAX_WORK` azioni esaminate ([js/config.js](js/config.js)) si tiene il
+  miglior piano trovato e l'app lo segnala.
+- **Candidati**: fino a **Sfidanti massimi** piani, compreso il migliore, con valore entro la soglia %. Ognuno è il
+  miglior piano non contenuto nei precedenti (spazio diviso senza sovrapposizioni con il metodo di Lawler). Si
+  confrontano a due, il piano scelto passa al confronto successivo: N candidati, N−1 scelte.
+- **Esecuzione**: step dal peso più alto al più basso; un'azione segue quelle da cui dipende (acquisto della stessa
+  ricetta, costruzione della versione normale). Le vendite
+  avvengono nello step in cui le monete non bastano, un'unità alla volta dal materiale base più abbondante (gli essenziali, se abilitati,
+  solo quando non resta nessun base vendibile) al netto di
+  quanto serve alle costruzioni successive.
 
 ## Dati
 

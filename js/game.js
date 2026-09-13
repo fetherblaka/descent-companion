@@ -1,6 +1,6 @@
 /* Partita: inventario, impostazioni, eroi, creazione e collegamento. */
 import { LOCAL_ONLY } from "./config.js";
-import { CODE_RE, EROI, MAT, RANK_KEYS, SOGLIA_MAX, defaultMagazzino, newCode } from "./data.js";
+import { ACTION_KEYS, CODE_RE, EROI, MAT, SFIDANTI_MAX, SOGLIA_MAX, defaultMagazzino, newCode } from "./data.js";
 import { KEY, LS, S } from "./store.js";
 import { attachGame, remoteExists, save } from "./sync.js";
 import { $, askConfirm, closeDyn, numModal, openModal, toast } from "./ui.js";
@@ -59,7 +59,7 @@ export function toggleHero(hero) {
 
 export function setPeso(key, value) {
   const n = parseFloat(value);
-  if (RANK_KEYS.includes(key) && !isNaN(n) && n >= 0) {
+  if (ACTION_KEYS.includes(key) && !isNaN(n) && n >= 0) {
     S.state.impostazioni.pesi[key] = n;
     save(false);
   }
@@ -69,6 +69,19 @@ export function setSoglia(value) {
   const n = parseFloat(value);
   if (!isNaN(n) && n >= 0) {
     S.state.impostazioni.soglia = Math.min(SOGLIA_MAX, n);
+    save(false);
+  }
+}
+
+export function setVendiEssenziali(checked) {
+  S.state.impostazioni.vendiEssenziali = checked === true;
+  save(false);
+}
+
+export function setMaxSfidanti(value) {
+  const n = parseInt(value, 10);
+  if (!isNaN(n) && n >= 0) {
+    S.state.impostazioni.maxSfidanti = Math.min(SFIDANTI_MAX, n);
     save(false);
   }
 }
