@@ -4,8 +4,8 @@ import { LOCAL_ONLY } from "./config.js";
 import { MATERIALI, RANK_KEYS, RANK_LABEL } from "./data.js";
 import { renderOttimizza } from "./plan.js";
 import { KEY, LS, S } from "./store.js";
-import { $, matChips, starsHtml, updateSyncPill } from "./ui.js";
-import { esc } from "./util.js";
+import { $, goScreen, matChips, starsHtml, updateSyncPill } from "./ui.js";
+import { esc, ownValue } from "./util.js";
 import { APP_VERSION } from "./version.js";
 
 const byName = (a, b) => a.nome.localeCompare(b.nome);
@@ -179,20 +179,41 @@ function renderImpostazioni() {
     <p class="app-version">Descent Companion ${esc(APP_VERSION)}</p>`;
 }
 
-/* il render ricostruisce le schermate: chi usa la tastiera ritrova il focus
+/* ── Aggiornamento delle schermate ──
+   Dopo ogni modifica si ridisegna solo la schermata visibile: le altre vengono
+   segnate come da aggiornare e ridisegnate quando si aprono (vedi showScreen). */
+const SCREENS = {
+  "scr-inv": renderInventario,
+  "scr-mkt": renderMercato,
+  "scr-own": renderRicette,
+  "scr-opt": renderOttimizza,
+  "scr-set": renderImpostazioni,
+};
+const stale = new Set(Object.keys(SCREENS));
+
+/* il render ricostruisce la schermata: chi usa la tastiera ritrova il focus
    sull'elemento equivalente (stessa azione e stessi parametri) */
 const focusSignature = (el) => (el?.dataset?.action ? JSON.stringify(el.dataset) : null);
 
-export function renderAll() {
-  const active = document.activeElement;
-  const signature = $("main").contains(active) ? focusSignature(active) : null;
-  renderInventario();
-  renderMercato();
-  renderRicette();
-  renderOttimizza();
-  renderImpostazioni();
-  updateSyncPill();
+function renderScreen(id) {
+  const screen = $(id);
+  const signature = screen.contains(document.activeElement) ? focusSignature(document.activeElement) : null;
+  stale.delete(id);
+  SCREENS[id]();
   if (signature) {
-    [...$("main").querySelectorAll("[data-action]")].find((el) => focusSignature(el) === signature)?.focus();
+    [...screen.querySelectorAll("[data-action]")].find((el) => focusSignature(el) === signature)?.focus();
   }
+}
+
+export function renderAll() {
+  Object.keys(SCREENS).forEach((id) => stale.add(id));
+  const current = document.querySelector(".screen.active")?.id;
+  if (ownValue(SCREENS, current)) renderScreen(current);
+  updateSyncPill();
+}
+
+export function showScreen(id) {
+  if (!ownValue(SCREENS, id)) return;
+  if (stale.has(id)) renderScreen(id);
+  goScreen(id);
 }

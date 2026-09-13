@@ -7,7 +7,8 @@ import { transformIfPot } from "./recipes.js";
 import { normalize } from "./schema.js";
 import { KEY, LS, S } from "./store.js";
 import { applyOps, canonState, diffState, save, stateSig } from "./sync.js";
-import { $, askConfirm, closeDyn, goScreen, heroCardHtml, infoModal, openModal, toast } from "./ui.js";
+import { showScreen } from "./render.js";
+import { $, askConfirm, closeDyn, heroCardHtml, infoModal, openModal, toast } from "./ui.js";
 import { esc, isPlainObj } from "./util.js";
 
 let currentPlan = null; /* piano mostrato (null anche per "nessuna azione consigliata") */
@@ -262,7 +263,7 @@ function applyPlan() {
     "Piano applicato",
     "Tutti i dati sono stati aggiornati" + (S.fb && S.online ? " e sincronizzati." : "."),
     "Vai all'inventario →",
-    () => goScreen("scr-inv"),
+    () => showScreen("scr-inv"),
   );
 }
 

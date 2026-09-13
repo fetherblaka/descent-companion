@@ -32,11 +32,12 @@ import {
   togglePotUI,
 } from "./recipes.js";
 import { sandboxExit, sandboxPick, sandboxPickManual, sandboxPicker, sandboxReload } from "./sandbox.js";
-import { closeDyn, goScreen, topModal, trapFocus } from "./ui.js";
+import { showScreen } from "./render.js";
+import { closeDyn, topModal, trapFocus } from "./ui.js";
 import { ownValue } from "./util.js";
 
 const CLICK_ACTIONS = {
-  goScreen: (d) => goScreen(d.scr),
+  goScreen: (d) => showScreen(d.scr),
   closeModal: (d) => closeDyn(d.target),
   bump: (d) => bump(d.kind, d.mat, Number(d.delta)),
   bumpCoins: (d) => bumpCoins(Number(d.delta)),
