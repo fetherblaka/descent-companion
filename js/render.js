@@ -6,6 +6,7 @@ import { renderOttimizza } from "./plan.js";
 import { KEY, LS, S } from "./store.js";
 import { $, matChips, starsHtml, updateSyncPill } from "./ui.js";
 import { esc } from "./util.js";
+import { APP_VERSION } from "./version.js";
 
 const byName = (a, b) => a.nome.localeCompare(b.nome);
 const byStarsThenName = (a, b) => b.stelle - a.stelle || byName(a, b);
@@ -14,17 +15,19 @@ function matRows(kind) {
   const src = kind === "own" ? S.state.materiali : S.state.magazzino;
   const group = (ess) =>
     MATERIALI.filter((m) => m.ess === ess)
-      .map(
-        (m) => `
+      .map((m) => {
+        const what = kind === "own" ? m.nome : `${m.nome} nel magazzino`;
+        const qty = esc(src[m.id] || 0);
+        return `
       <div class="mat-row">
         <span class="mat-name${m.ess ? " ess" : ""}">${m.nome}</span>
         <div class="stepper">
-          <button data-action="bump" data-kind="${kind}" data-mat="${m.id}" data-delta="-1">−</button>
-          <span data-action="editNum" data-kind="${kind}" data-mat="${m.id}">${esc(src[m.id] || 0)}</span>
-          <button data-action="bump" data-kind="${kind}" data-mat="${m.id}" data-delta="1">+</button>
+          <button data-action="bump" data-kind="${kind}" data-mat="${m.id}" data-delta="-1" aria-label="Diminuisci ${what}">−</button>
+          <span role="button" tabindex="0" aria-label="${what}: ${qty}, modifica" data-action="editNum" data-kind="${kind}" data-mat="${m.id}">${qty}</span>
+          <button data-action="bump" data-kind="${kind}" data-mat="${m.id}" data-delta="1" aria-label="Aumenta ${what}">+</button>
         </div>
-      </div>`,
-      )
+      </div>`;
+      })
       .join("");
   return `<div class="card">${group(false)}</div><div class="card">${group(true)}</div>`;
 }
@@ -34,11 +37,11 @@ function renderInventario() {
   $("scr-inv").innerHTML = `
     <h2>Monete</h2>
     <div class="card row">
-      <span class="coins-big" data-action="editNum" data-kind="coins">🪙 ${monete}</span>
+      <span class="coins-big" role="button" tabindex="0" aria-label="Monete: ${monete}, modifica" data-action="editNum" data-kind="coins">🪙 ${monete}</span>
       <div class="stepper">
-        <button data-action="bumpCoins" data-delta="-1">−</button>
-        <span data-action="editNum" data-kind="coins">${monete}</span>
-        <button data-action="bumpCoins" data-delta="1">+</button>
+        <button data-action="bumpCoins" data-delta="-1" aria-label="Diminuisci monete">−</button>
+        <span role="button" tabindex="0" aria-label="Monete: ${monete}, modifica" data-action="editNum" data-kind="coins">${monete}</span>
+        <button data-action="bumpCoins" data-delta="1" aria-label="Aumenta monete">+</button>
       </div>
     </div>
     <h2>Materiali posseduti</h2>
@@ -64,8 +67,9 @@ function recipeCardHtml(r, ctx) {
   const id = esc(r.id);
   const heroChips = r.eroi.map((h) => `<span class="chip hero">${esc(h)}</span>`).join("");
   const ignored = r.stelle === 0;
-  const editBtns = `<button class="icon-btn" data-action="openRecipeForm" data-id="${id}">✎</button>
-    <button class="icon-btn" data-action="deleteRecipe" data-id="${id}">🗑</button>`;
+  const nome = esc(r.nome);
+  const editBtns = `<button class="icon-btn" data-action="openRecipeForm" data-id="${id}" aria-label="Modifica ${nome}" title="Modifica">✎</button>
+    <button class="icon-btn" data-action="deleteRecipe" data-id="${id}" aria-label="Elimina ${nome}" title="Elimina">🗑</button>`;
   let actions;
   let badge;
   if (ctx === "mercato") {
@@ -83,7 +87,7 @@ function recipeCardHtml(r, ctx) {
   const starsLine = ctx === "mercato" ? "" : `${starsHtml(r.stelle, ctx === "costruita" ? null : r.id)}&nbsp;`;
   const coinChip =
     ctx === "mercato"
-      ? `<span class="chip coin" data-action="editCosto" data-id="${id}">🪙 ${esc(r.costo)}</span>`
+      ? `<span class="chip coin" role="button" tabindex="0" aria-label="Costo: ${esc(r.costo)} monete, modifica" data-action="editCosto" data-id="${id}">🪙 ${esc(r.costo)}</span>`
       : "";
   const classes = ["card", "recipe-card"];
   if (ignored && ctx === "mercato") classes.push("ignored");
@@ -148,11 +152,11 @@ function renderImpostazioni() {
     <h2>Pesi delle azioni</h2>
     <p class="hint">Modificabili se l'app fa troppe (o troppo poche) domande. Rispetta la gerarchia: valori decrescenti dall'alto in basso.</p>
     <div class="card settings-grid">
-      ${RANK_KEYS.map((k) => `<span>${RANK_LABEL[k]}</span><input type="number" min="0" value="${esc(pesi[k])}" data-change="setPeso" data-key="${k}">`).join("")}
+      ${RANK_KEYS.map((k) => `<label for="peso-${k}">${RANK_LABEL[k]}</label><input type="number" id="peso-${k}" min="0" value="${esc(pesi[k])}" data-change="setPeso" data-key="${k}">`).join("")}
     </div>
     <h2>Popup di scelta</h2>
     <div class="card settings-grid">
-      <span>Soglia piani equivalenti</span><input type="number" min="0" max="100" value="${esc(soglia)}" data-change="setSoglia">
+      <label for="soglia">Soglia piani equivalenti</label><input type="number" id="soglia" min="0" max="100" value="${esc(soglia)}" data-change="setSoglia">
     </div>
     <p class="hint">% di distanza entro cui due piani sono "quasi pari" e l'app chiede a voi.</p>
     <h2>Partita condivisa</h2>
@@ -163,7 +167,7 @@ function renderImpostazioni() {
         <button class="btn" data-action="copyCode">⧉ Copia codice</button>
         <button class="btn" data-action="newGame">↻ Nuova partita</button>
       </div>
-      <label>Collega a una partita esistente</label>
+      <label for="join-code">Collega a una partita esistente</label>
       <div class="inline"><input type="text" id="join-code" placeholder="DSC-XXXX-XXXX"><button class="btn" id="join-btn" data-action="joinGame">Collega</button></div>
     </div>
     ${sandboxSection()}
@@ -171,14 +175,24 @@ function renderImpostazioni() {
     <div class="card">
       <button class="btn big" ${hasUndo ? "" : "disabled"} data-action="undoApply">↩ Annulla ultima applicazione piano</button>
       <p class="hint hint-block">Ripristina lo stato precedente all'ultimo "Applica piano" (salvato su questo dispositivo).</p>
-    </div>`;
+    </div>
+    <p class="app-version">Descent Companion ${esc(APP_VERSION)}</p>`;
 }
 
+/* il render ricostruisce le schermate: chi usa la tastiera ritrova il focus
+   sull'elemento equivalente (stessa azione e stessi parametri) */
+const focusSignature = (el) => (el?.dataset?.action ? JSON.stringify(el.dataset) : null);
+
 export function renderAll() {
+  const active = document.activeElement;
+  const signature = $("main").contains(active) ? focusSignature(active) : null;
   renderInventario();
   renderMercato();
   renderRicette();
   renderOttimizza();
   renderImpostazioni();
   updateSyncPill();
+  if (signature) {
+    [...$("main").querySelectorAll("[data-action]")].find((el) => focusSignature(el) === signature)?.focus();
+  }
 }

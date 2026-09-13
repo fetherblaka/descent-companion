@@ -109,7 +109,7 @@ export function firstRunModal() {
     `<h3>Benvenuto</h3>
     <p class="sub">Nessuna partita salvata su questo dispositivo. Inizia una nuova partita oppure collegati a una esistente digitandone il codice.</p>
     <button class="btn gold big" id="fr-new">✦ Inizia una nuova partita</button>
-    <label>Oppure collega una partita esistente</label>
+    <label for="fr-code">Oppure collega una partita esistente</label>
     <div class="inline"><input type="text" id="fr-code" placeholder="DSC-XXXX-XXXX"><button class="btn" id="fr-join">Collega</button></div>
     ${
       LOCAL_ONLY
@@ -117,6 +117,7 @@ export function firstRunModal() {
            <button class="btn" data-action="firstRunSandbox">🔒 Carica dati reali</button>`
         : ""
     }`,
+    { dismiss: "none" } /* senza una partita l'app non può funzionare */,
   );
   $("fr-new").onclick = () => {
     closeDyn("dyn-firstrun");

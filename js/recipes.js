@@ -3,7 +3,7 @@ import { EROI, HERO_SHORTCUTS, MAT, MATERIALI, MAX_STELLE } from "./data.js";
 import { cleanOrphanPrereqs } from "./schema.js";
 import { S } from "./store.js";
 import { save } from "./sync.js";
-import { $, askConfirm, closeDyn, numModal, openModal, toast } from "./ui.js";
+import { $, askConfirm, closeDyn, formStarsHtml, heroCardHtml, numModal, openModal, toast } from "./ui.js";
 import { esc, ownValue, uid } from "./util.js";
 
 const NEW_RECIPE_STARS = 2;
@@ -62,7 +62,7 @@ export function openRecipeForm(id, newStato) {
   const option = (value, label, extra = "") =>
     `<option value="${value}" ${preTipo === value ? "selected" : ""} ${extra}>${label}</option>`;
   const costoField = showCosto
-    ? `<label>Costo di acquisto (monete)</label>
+    ? `<label for="f-costo">Costo di acquisto (monete)</label>
        <input type="number" id="f-costo" min="0" inputmode="numeric" value="${r ? esc(r.costo) : ""}" placeholder="45">`
     : "";
   const matRows = r
@@ -75,37 +75,38 @@ export function openRecipeForm(id, newStato) {
     "modal-recipe",
     `<h3>${r ? "Modifica ricetta" : "Nuova ricetta"}</h3>
     <p class="sub">${sub}</p>
-    <label>Nome</label>
+    <label for="f-nome">Nome</label>
     <input type="text" id="f-nome" value="${r ? esc(r.nome) : ""}" placeholder="es. Martello delle Ere">
     ${costoField}
-    <label>Priorità</label>
-    <div id="f-stars" class="stars pick big"></div>
+    <p class="field-label" id="f-stars-label">Priorità</p>
+    <div id="f-stars" class="stars pick big" role="group" aria-labelledby="f-stars-label"></div>
     <p class="hint form-note">tocca — ritocca l'ultima stella per scendere fino a 0 (= mai)</p>
     <div class="checkline spaced">
       <input type="checkbox" id="f-pot" ${pot ? "checked" : ""} data-change="togglePotUI">
       <label for="f-pot" class="strong">Versione potenziata <b class="pot-mark">+</b></label>
     </div>
     <div id="f-prereq" class="prereq-box"${pot ? "" : " hidden"}>
-      <label>Versione normale</label>
+      <label for="f-prereq-tipo">Versione normale</label>
       <select id="f-prereq-tipo" data-change="togglePotUI">
         ${option("posseduta", "Già posseduta")}
         ${option("mancante", "Non posseduta — blocca la costruzione")}
         ${option("ricetta", "È una ricetta nell'app…", others.length ? "" : "disabled")}
       </select>
-      <select id="f-prereq-id" class="prereq-id"${pot && preTipo === "ricetta" ? "" : " hidden"}>${preOpts}</select>
+      <select id="f-prereq-id" class="prereq-id" aria-label="Ricetta normale collegata"${pot && preTipo === "ricetta" ? "" : " hidden"}>${preOpts}</select>
     </div>
-    <label>Eroi</label>
-    <div class="shortcut-row">
+    <p class="field-label" id="f-heroes-label">Eroi</p>
+    <div class="shortcut-row" role="group" aria-label="Selezione rapida degli eroi">
       ${shortcut("all", "Tutti")}${shortcut("leggera", "Arm. leggera")}${shortcut("media", "Arm. media")}${shortcut("pesante", "Arm. pesante")}
     </div>
-    <div id="f-heroes" class="heroes-grid form-heroes"></div>
-    <label>Materiali per la costruzione</label>
-    <div id="f-mats">${matRows}</div>
+    <div id="f-heroes" class="heroes-grid form-heroes" role="group" aria-labelledby="f-heroes-label"></div>
+    <p class="field-label" id="f-mats-label">Materiali per la costruzione</p>
+    <div id="f-mats" role="group" aria-labelledby="f-mats-label">${matRows}</div>
     <button class="btn" data-action="addMatRow">+ Aggiungi materiale</button>
     <div class="btn-row form-actions">
       <button class="btn" data-action="closeModal" data-target="modal-recipe">Annulla</button>
       <button class="btn gold" data-action="saveRecipe" data-id="${esc(id || "")}" data-stato="${esc(newStato || "")}">Salva ricetta</button>
     </div>`,
+    { dismiss: "esc" },
   );
   formStars = r ? r.stelle : NEW_RECIPE_STARS;
   formHeroes = r ? [...r.eroi] : [];
@@ -119,31 +120,28 @@ export function togglePotUI() {
   $("f-prereq-id").hidden = !(pot && $("f-prereq-tipo").value === "ricetta");
 }
 
-function drawFormStars() {
-  let h = "";
-  for (let k = 1; k <= MAX_STELLE; k++) {
-    h += `<span class="${k <= formStars ? "" : "off"}" data-action="formStar" data-k="${k}">★</span>`;
-  }
-  $("f-stars").innerHTML = h;
+function drawFormStars(focusK) {
+  $("f-stars").innerHTML = formStarsHtml(formStars);
+  /* il ridisegno sostituisce le stelle: il focus da tastiera resta su quella premuta */
+  if (focusK) $("f-stars").querySelector(`[data-k="${focusK}"]`)?.focus();
 }
 
 export function formStar(k) {
+  if (!(k >= 1 && k <= MAX_STELLE)) return;
   formStars = formStars === k ? k - 1 : k;
-  drawFormStars();
+  drawFormStars(k);
 }
 
-function drawFormHeroes() {
-  $("f-heroes").innerHTML = EROI.map(
-    (h) =>
-      `<div class="hero-card${formHeroes.includes(h) ? " sel" : ""}" data-action="fHeroToggle" data-hero="${esc(h)}">${esc(h)}</div>`,
-  ).join("");
+function drawFormHeroes(focusHero) {
+  $("f-heroes").innerHTML = EROI.map((h) => heroCardHtml(h, formHeroes.includes(h), "fHeroToggle")).join("");
+  if (focusHero) [...$("f-heroes").children].find((el) => el.dataset.hero === focusHero)?.focus();
 }
 
 export function fHeroToggle(hero) {
   const i = formHeroes.indexOf(hero);
   if (i >= 0) formHeroes.splice(i, 1);
   else if (EROI.includes(hero)) formHeroes.push(hero);
-  drawFormHeroes();
+  drawFormHeroes(hero);
 }
 
 export function fHeroShortcut(kind) {
@@ -156,9 +154,9 @@ function matRowHtml(matId, qty) {
     (m) => `<option value="${m.id}" ${m.id === matId ? "selected" : ""}>${m.nome}</option>`,
   ).join("");
   return `<div class="inline mat-sel">
-    <select>${opts}</select>
-    <input type="number" min="1" value="${esc(qty || 1)}">
-    <button class="icon-btn" data-action="removeMatRow">🗑</button>
+    <select aria-label="Materiale">${opts}</select>
+    <input type="number" min="1" value="${esc(qty || 1)}" aria-label="Quantità">
+    <button class="icon-btn" data-action="removeMatRow" aria-label="Rimuovi materiale" title="Rimuovi">🗑</button>
   </div>`;
 }
 

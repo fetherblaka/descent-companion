@@ -13,7 +13,7 @@
     <div class="app">
       <header>
         <h1>Descent Companion</h1>
-        <span class="sync-pill" id="sync-pill">◌ locale</span>
+        <span class="sync-pill" id="sync-pill" role="status" aria-live="polite">◌ locale</span>
       </header>
       <div class="sbx-bar" id="sbx-bar" hidden></div>
       <main id="main">
@@ -23,15 +23,19 @@
         <section class="screen" id="scr-opt"></section>
         <section class="screen" id="scr-set"></section>
       </main>
-      <nav>
-        <button class="active" data-action="goScreen" data-scr="scr-inv"><span class="ic">🎒</span>Inventario</button>
-        <button data-action="goScreen" data-scr="scr-mkt"><span class="ic">⚖️</span>Mercato</button>
-        <button data-action="goScreen" data-scr="scr-own"><span class="ic">📜</span>Ricette</button>
-        <button data-action="goScreen" data-scr="scr-opt"><span class="ic">⚡</span>Ottimizza</button>
-        <button data-action="goScreen" data-scr="scr-set"><span class="ic">⚙️</span>Altro</button>
+      <nav aria-label="Sezioni">
+        <button class="active" aria-current="page" data-action="goScreen" data-scr="scr-inv">
+          <span class="ic" aria-hidden="true">🎒</span>Inventario
+        </button>
+        <button data-action="goScreen" data-scr="scr-mkt"><span class="ic" aria-hidden="true">⚖️</span>Mercato</button>
+        <button data-action="goScreen" data-scr="scr-own"><span class="ic" aria-hidden="true">📜</span>Ricette</button>
+        <button data-action="goScreen" data-scr="scr-opt">
+          <span class="ic" aria-hidden="true">⚡</span>Ottimizza
+        </button>
+        <button data-action="goScreen" data-scr="scr-set"><span class="ic" aria-hidden="true">⚙️</span>Altro</button>
       </nav>
       <div id="modals"></div>
-      <div class="toast" id="toast"></div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
   </body>
 </html>

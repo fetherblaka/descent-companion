@@ -39,6 +39,12 @@ jobs:
           test -s _site/css/app.css
           test -s _site/js/main.js
 
+      - name: Scrivi la versione pubblicata
+        # Solo nella copia del sito: nel repository js/version.js resta "dev".
+        run: |
+          sed -i "s/^export const APP_VERSION = .*/export const APP_VERSION = \"${GITHUB_REF_NAME}\";/" _site/js/version.js
+          grep -q "\"${GITHUB_REF_NAME}\"" _site/js/version.js
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

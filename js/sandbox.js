@@ -92,7 +92,7 @@ export async function sandboxPicker() {
     `<h3>Dati reali</h3>
     <p class="sub">Carica una partita dal database di produzione in una copia locale di prova: potrai usarla come vuoi, l'app non scriverà nulla sul server.</p>
     <div id="sbx-list"><p class="hint">Lettura in corso…</p></div>
-    <label>Codice partita</label>
+    <label for="sbx-code">Codice partita</label>
     <div class="inline">
       <input type="text" id="sbx-code" placeholder="DSC-XXXX-XXXX">
       <button class="btn" data-action="sandboxPickManual">Carica</button>
@@ -125,7 +125,7 @@ export async function sandboxPicker() {
         .map(([c, g]) => {
           const nr = Object.keys(g.ricette || {}).length;
           const eroi = Array.isArray(g.eroiSel) ? g.eroiSel.join(", ") : "";
-          return `<div class="opt-card" data-action="sandboxPick" data-code="${esc(c)}"><b>${esc(c)}</b>
+          return `<div class="opt-card" role="button" tabindex="0" data-action="sandboxPick" data-code="${esc(c)}"><b>${esc(c)}</b>
             <div class="val">🪙 ${esc(g.monete || 0)} · ${nr} ricette · ${esc(eroi)}</div></div>`;
         })
         .join("")

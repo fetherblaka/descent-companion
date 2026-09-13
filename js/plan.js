@@ -7,7 +7,7 @@ import { transformIfPot } from "./recipes.js";
 import { normalize } from "./schema.js";
 import { KEY, LS, S } from "./store.js";
 import { applyOps, canonState, diffState, save, stateSig } from "./sync.js";
-import { $, askConfirm, closeDyn, goScreen, infoModal, openModal, toast } from "./ui.js";
+import { $, askConfirm, closeDyn, goScreen, heroCardHtml, infoModal, openModal, toast } from "./ui.js";
 import { esc, isPlainObj } from "./util.js";
 
 let currentPlan = null; /* piano mostrato (null anche per "nessuna azione consigliata") */
@@ -44,16 +44,13 @@ export function renderOttimizza() {
     planStaleNotice = true;
   }
   const ready = sel.length === HEROES_PER_MISSION;
-  const heroes = EROI.map(
-    (h) =>
-      `<div class="hero-card${sel.includes(h) ? " sel" : ""}" data-action="toggleHero" data-hero="${esc(h)}">${esc(h)}</div>`,
-  ).join("");
+  const heroes = EROI.map((h) => heroCardHtml(h, sel.includes(h), "toggleHero")).join("");
   $("scr-opt").innerHTML = `
     <div id="opt-step1">
       ${planStaleNotice ? `<p class="hint stale-notice warn">⚠ I dati sono cambiati: il piano precedente non è più valido, elaboralo di nuovo.</p>` : ""}
       <h2>Chi parte per la missione?</h2>
       <p class="hint">Seleziona i ${HEROES_PER_MISSION} eroi: le costruzioni suggerite riguarderanno solo loro. Gli acquisti valgono per tutti.</p>
-      <div class="heroes-grid">${heroes}</div>
+      <div class="heroes-grid" role="group" aria-label="Eroi in missione">${heroes}</div>
       <p class="hint hero-count${ready ? "" : " warn"}">${sel.length} / ${HEROES_PER_MISSION} selezionati</p>
       <button class="btn gold big" id="btn-elab" ${ready ? "" : "disabled"} data-action="runOptimizer">⚡ Elabora consigli</button>
     </div>
@@ -97,7 +94,7 @@ function optimizerLoop() {
 function planOptionHtml(pl, idx) {
   const items = pl.actions.map((a) => `<li>· ${esc(a.label)}</li>`).join("");
   const n = pl.actions.length;
-  return `<div class="opt-card" data-action="chooseOption" data-idx="${idx}">
+  return `<div class="opt-card" role="button" tabindex="0" data-action="chooseOption" data-idx="${idx}">
     <b>${idx === 0 ? "A" : "B"} · ${n} azion${n === 1 ? "e" : "i"}</b>
     <ul>${items}</ul>
     <div class="val">Valore ${esc(pl.value)} · spesa netta 🪙 ${esc(pl.spend)} · restano 🪙 ${esc(pl.coinsAfter)}</div></div>`;

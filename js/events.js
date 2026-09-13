@@ -32,7 +32,7 @@ import {
   togglePotUI,
 } from "./recipes.js";
 import { sandboxExit, sandboxPick, sandboxPickManual, sandboxPicker, sandboxReload } from "./sandbox.js";
-import { closeDyn, goScreen } from "./ui.js";
+import { closeDyn, goScreen, topModal, trapFocus } from "./ui.js";
 import { ownValue } from "./util.js";
 
 const CLICK_ACTIONS = {
@@ -82,6 +82,11 @@ const CHANGE_ACTIONS = {
 
 export function installEvents() {
   document.addEventListener("click", (e) => {
+    /* tocco sullo sfondo di un modale chiudibile */
+    if (e.target.classList?.contains("overlay") && e.target.dataset.dismiss === "all") {
+      closeDyn(e.target.id);
+      return;
+    }
     const el = e.target.closest("[data-action]");
     if (!el || el.disabled) return;
     const fn = ownValue(CLICK_ACTIONS, el.dataset.action);
@@ -92,5 +97,22 @@ export function installEvents() {
     if (!el) return;
     const fn = ownValue(CHANGE_ACTIONS, el.dataset.change);
     if (fn) fn(el.dataset, el);
+  });
+  document.addEventListener("keydown", (e) => {
+    const overlay = topModal();
+    if (overlay && e.key === "Escape" && overlay.dataset.dismiss !== "none") {
+      e.preventDefault();
+      closeDyn(overlay.id);
+      return;
+    }
+    if (overlay && e.key === "Tab") {
+      trapFocus(overlay, e);
+      return;
+    }
+    /* elementi con data-action che non sono <button> (role="button"): attivabili da tastiera */
+    if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("[data-action]:not(button)")) {
+      e.preventDefault();
+      e.target.click();
+    }
   });
 }
