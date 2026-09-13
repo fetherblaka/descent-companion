@@ -32,10 +32,12 @@ jobs:
         # repository (config di sviluppo, lint, documentazione) non va online.
         # Se l'app acquisisce nuovi file (css, js, immagini) vanno aggiunti qui.
         run: |
-          SITE_FILES="index.html"
+          SITE_FILES="index.html css js"
           mkdir _site
           for f in $SITE_FILES; do cp -r --parents "$f" _site/; done
           test -s _site/index.html
+          test -s _site/css/app.css
+          test -s _site/js/main.js
 
       - uses: actions/configure-pages@v5
 

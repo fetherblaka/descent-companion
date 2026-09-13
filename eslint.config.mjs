@@ -1,21 +1,18 @@
 import js from "@eslint/js";
-import html from "eslint-plugin-html";
 import globals from "globals";
 
 export default [
   { ignores: ["node_modules/", "_site/"] },
   js.configs.recommended,
   {
-    // lo script inline di index.html
-    files: ["**/*.html"],
-    plugins: { html },
+    // moduli ES dell'app
+    files: ["js/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: "script",
-      globals: { ...globals.browser, firebase: "readonly" },
+      sourceType: "module",
+      globals: globals.browser,
     },
     rules: {
-      "no-empty": ["error", { allowEmptyCatch: true }],
       "no-unused-vars": ["error", { caughtErrors: "none" }],
     },
   },
