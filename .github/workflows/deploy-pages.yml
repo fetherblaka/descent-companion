@@ -6,7 +6,7 @@ name: Deploy to GitHub Pages (tag)
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: read
@@ -28,9 +28,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Prepara i file del sito
+        # Pubblica SOLO i file dell'app elencati qui: tutto il resto del
+        # repository (config di sviluppo, lint, documentazione) non va online.
+        # Se l'app acquisisce nuovi file (css, js, immagini) vanno aggiunti qui.
         run: |
+          SITE_FILES="index.html"
           mkdir _site
-          rsync -a --exclude='.git' --exclude='.github' --exclude='_site' ./ _site/
+          for f in $SITE_FILES; do cp -r --parents "$f" _site/; done
+          test -s _site/index.html
 
       - uses: actions/configure-pages@v5
 
