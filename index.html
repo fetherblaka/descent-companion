@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Descent Companion</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&display=swap" rel="stylesheet">
@@ -15,14 +15,14 @@
   }
   *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
   body{background:#0b0e14; color:var(--text); font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:15px; line-height:1.5; display:flex; justify-content:center; min-height:100vh;}
-  .app{width:100%; max-width:480px; background:var(--bg); min-height:100vh; display:flex; flex-direction:column; position:relative; border-left:1px solid #1d2430; border-right:1px solid #1d2430;}
-  header{padding:14px 18px 10px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line);}
+  .app{width:100%; max-width:480px; background:var(--bg); height:100vh; height:100dvh; display:flex; flex-direction:column; position:relative; border-left:1px solid #1d2430; border-right:1px solid #1d2430;}
+  header{padding:calc(14px + env(safe-area-inset-top)) 18px 10px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line);}
   header h1{font-family:'Cinzel',serif; font-size:19px; font-weight:600; color:var(--gold); letter-spacing:1px;}
   .sync-pill{font-size:11px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted);}
   .sync-pill.on{border-color:#2a5647; color:var(--teal);}
   .sync-pill.ro{border-color:var(--gold-dim); color:var(--gold);}
   .sbx-bar{background:#33270f; border-bottom:1px solid var(--gold-dim); color:var(--gold); font-size:11.5px; padding:6px 14px; text-align:center;}
-  main{flex:1; overflow-y:auto; padding:16px 16px 90px;}
+  main{flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:16px 16px 24px;}
   .screen{display:none;}
   .screen.active{display:block;}
   h2{font-family:'Cinzel',serif; font-size:15px; font-weight:600; color:var(--text); letter-spacing:.8px; margin:18px 0 10px;}
@@ -60,7 +60,7 @@
   .btn-row{display:flex; gap:8px; margin-top:10px;}
   .btn-row .btn{flex:1;}
   .icon-btn{background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:4px 6px;}
-  nav{position:absolute; bottom:0; left:0; right:0; background:#141924; border-top:1px solid var(--line); display:flex;}
+  nav{flex-shrink:0; padding-bottom:env(safe-area-inset-bottom); background:#141924; border-top:1px solid var(--line); display:flex;}
   nav button{flex:1; background:none; border:none; color:var(--muted); padding:9px 2px 10px; cursor:pointer; font-size:10.5px; display:flex; flex-direction:column; align-items:center; gap:3px; font-family:inherit;}
   nav button .ic{font-size:19px; line-height:1;}
   nav button.active{color:var(--gold);}
@@ -90,7 +90,7 @@
   .settings-grid{display:grid; grid-template-columns:1fr 80px; gap:8px 12px; align-items:center; font-size:14px;}
   .settings-grid input{padding:7px 9px; text-align:center;}
   .empty{color:var(--muted); font-size:13.5px; text-align:center; padding:14px 6px;}
-  .toast{position:fixed; bottom:76px; left:50%; transform:translateX(-50%); background:#0e2b22; border:1px solid #2a5647; color:var(--teal); padding:9px 16px; border-radius:999px; font-size:13px; z-index:99; display:none; max-width:90%;}
+  .toast{position:fixed; bottom:calc(76px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:#0e2b22; border:1px solid #2a5647; color:var(--teal); padding:9px 16px; border-radius:999px; font-size:13px; z-index:99; display:none; max-width:90%;}
   .checkline{display:flex; gap:8px; align-items:center; font-size:13.5px; margin-top:10px; color:var(--muted);}
 </style>
 </head>
@@ -189,26 +189,40 @@ function defaultState(){
    scrittura raggiunge mai Firebase. */
 let SANDBOX = null;
 const lsk = k => SANDBOX ? "sbx_"+k : k;
+let storageWarned=false;
 const LS = {
-  get:(k)=>localStorage.getItem(lsk(k)),
-  set:(k,v)=>localStorage.setItem(lsk(k),v),
-  del:(k)=>localStorage.removeItem(lsk(k))
+  get:(k)=>{ try{ return localStorage.getItem(lsk(k)); }catch(e){ return null; } },
+  set:(k,v)=>{
+    try{ localStorage.setItem(lsk(k),v); return true; }
+    catch(e){
+      if(!storageWarned){ storageWarned=true; toast("Salvataggio locale non riuscito: spazio esaurito o archiviazione bloccata"); }
+      return false;
+    }
+  },
+  del:(k)=>{ try{ localStorage.removeItem(lsk(k)); }catch(e){} }
 };
+/* JSON.parse che non blocca l'app se i dati locali sono corrotti */
+function parseJSON(str, fallback=null){
+  if(str==null) return fallback;
+  try{ return JSON.parse(str); }catch(e){ return fallback; }
+}
 
 let state = defaultState();
 let gameCode = LS.get("descent_code") || null;
 let db=null, gameRef=null, online=false, lastPushed="";
 let currentPlan=null, optCtx=null;
+let planSig=null;          /* firma dello stato su cui è stato calcolato il piano mostrato */
+let planStaleNotice=false; /* avviso "piano non più valido" nella schermata Ottimizza */
 let prevGameCode=null;   /* partita locale da ripristinare uscendo dalla sandbox */
 
 /* ── Modalità test locale ──
-   Fuori da GitHub Pages (apertura del file, localhost, o ?local nell'URL)
-   Firebase resta disattivato: i dati restano solo su questo dispositivo e
-   non toccano la partita di produzione. */
-const LOCAL_ONLY =
-  location.protocol === "file:" ||
-  ["localhost","127.0.0.1","0.0.0.0",""].includes(location.hostname) ||
-  new URLSearchParams(location.search).has("local");
+   Firebase è attivo solo sull'host di produzione (GitHub Pages, https).
+   Ovunque altrove (apertura del file, localhost, IP di rete locale come
+   192.168.x.x, anteprime) oppure con ?local nell'URL resta disattivato:
+   i dati restano solo su questo dispositivo e non toccano la partita di
+   produzione. */
+const PROD_HOST = location.protocol === "https:" && /\.github\.io$/i.test(location.hostname);
+const LOCAL_ONLY = !PROD_HOST || new URLSearchParams(location.search).has("local");
 
 /* In ambiente di test l'SDK Firebase viene reso inservibile: senza di esso non
    esiste alcun canale di scrittura verso il database di produzione. I dati reali
@@ -217,6 +231,7 @@ if(LOCAL_ONLY){ try{ delete window.firebase; }catch(e){ window.firebase=undefine
 
 /* ── Persistenza & sync ── */
 function normalize(s){
+  if(!s || typeof s!=="object") s={};
   const d = defaultState();
   const out = {...d, ...s};
   out.materiali = {...d.materiali, ...(s.materiali||{})};
@@ -242,15 +257,19 @@ function save(rerender=true){
   LS.set("descent_state_"+gameCode, JSON.stringify(state));
   if(!SANDBOX && online && gameRef){
     clearTimeout(saveTimer);
-    saveTimer=setTimeout(()=>{ lastPushed=JSON.stringify(state); gameRef.set(state); }, 250);
+    saveTimer=setTimeout(pushRemote, 250);
   }
   if(rerender) renderAll();
+}
+function pushRemote(){
+  if(!gameRef) return;
+  lastPushed=JSON.stringify(state);
+  gameRef.set(state).catch(e=>toast("Sincronizzazione non riuscita: "+((e&&e.message)||e)));
 }
 function attachGame(code){
   gameCode=code;
   LS.set("descent_code", code);
-  const local = LS.get("descent_state_"+code);
-  state = normalize(local? JSON.parse(local) : defaultState());
+  state = normalize(parseJSON(LS.get("descent_state_"+code)) || defaultState());
   if(gameRef) gameRef.off();
   if(db && !SANDBOX){
     gameRef = db.ref("partite/"+code);
@@ -263,7 +282,7 @@ function attachGame(code){
           LS.set("descent_state_"+code, remote);
           renderAll();
         }
-      } else { lastPushed=JSON.stringify(state); gameRef.set(state); }
+      } else pushRemote();
     }, ()=>{ online=false; updateSyncPill(); });
   }
   renderAll();
@@ -338,7 +357,7 @@ function sandboxEnter(code, data){
   LS.set("descent_code", code);
   LS.set("descent_state_"+code, JSON.stringify(state));
   sandboxRemember(code);
-  currentPlan=null;
+  clearPlan(); planStaleNotice=false;
   renderAll();
 }
 async function sandboxLoadCode(code){
@@ -402,7 +421,7 @@ function sandboxExit(){
   try{ sessionStorage.removeItem("descent_sbx_code"); }catch(e){}
   gameCode = prevGameCode || LS.get("descent_code") || null;
   prevGameCode=null;
-  currentPlan=null;
+  clearPlan(); planStaleNotice=false;
   if(gameCode) attachGame(gameCode);
   else { state=defaultState(); renderAll(); firstRunModal(); }
   toast("Sandbox chiusa");
@@ -423,6 +442,7 @@ function matChips(reqs){
     .map(([m,q])=>`<span class="chip">${q}× ${esc(MAT[m]?MAT[m].nome:m)}</span>`).join("");
 }
 function askConfirm(title, sub, bodyHtml, okLabel, okFn, okClass="teal"){
+  closeDyn("dyn-confirm");
   $("modals").insertAdjacentHTML("beforeend",
    `<div class="overlay open" id="dyn-confirm"><div class="modal">
       <h3>${title}</h3><p class="sub">${sub}</p>${bodyHtml||""}
@@ -434,6 +454,7 @@ function askConfirm(title, sub, bodyHtml, okLabel, okFn, okClass="teal"){
 }
 function closeDyn(id){ const e=$(id); if(e) e.remove(); }
 function infoModal(title, sub, btnLabel, fn){
+  closeDyn("dyn-info");
   $("modals").insertAdjacentHTML("beforeend",
    `<div class="overlay open" id="dyn-info"><div class="modal" style="text-align:center;">
       <div style="font-size:42px; margin:6px 0 10px;">✅</div>
@@ -578,8 +599,17 @@ function renderRicette(){
 }
 function renderOttimizza(){
   const sel=state.eroiSel;
+  const sig=stateSig(state);
+  /* se i dati cambiano (modifica locale o da un altro dispositivo) mentre è aperta
+     una scelta o è mostrato un piano, quel piano non è più valido */
+  if(optCtx && optCtx.sig!==sig && $("modal-choice")){
+    closeDyn("modal-choice"); optCtx=null; planStaleNotice=true;
+  }
+  const keepPlan = planSig!==null && planSig===sig;
+  if(planSig!==null && !keepPlan){ clearPlan(); planStaleNotice=true; }
   $("scr-opt").innerHTML = `
     <div id="opt-step1">
+      ${planStaleNotice? `<p class="hint" style="margin:0 0 12px; color:var(--coral);">⚠ I dati sono cambiati: il piano precedente non è più valido, elaboralo di nuovo.</p>`:""}
       <h2>Chi parte per la missione?</h2>
       <p class="hint">Seleziona i 4 eroi: le costruzioni suggerite riguarderanno solo loro. Gli acquisti valgono per tutti.</p>
       <div class="heroes-grid">${EROI.map(h=>`<div class="hero-card${sel.includes(h)?" sel":""}" onclick="toggleHero('${h}')">${h}</div>`).join("")}</div>
@@ -587,6 +617,7 @@ function renderOttimizza(){
       <button class="btn gold big" id="btn-elab" ${sel.length===4?"":"disabled"} onclick="runOptimizer()">⚡ Elabora consigli</button>
     </div>
     <div id="opt-plan"></div>`;
+  if(keepPlan) showPlan(currentPlan);
 }
 function renderImpostazioni(){
   const p=state.impostazioni.pesi;
@@ -609,7 +640,7 @@ function renderImpostazioni(){
       <div class="summary-row"><span>Sincronizzazione</span><b>${db?(online?"attiva (Firebase)":"in connessione…"):"non configurata — solo locale"}</b></div>
       <div class="btn-row"><button class="btn" onclick="copyCode()">⧉ Copia codice</button><button class="btn" onclick="newGame()">↻ Nuova partita</button></div>
       <label>Collega a una partita esistente</label>
-      <div class="inline"><input type="text" id="join-code" placeholder="DSC-XXXX-XXXX"><button class="btn" onclick="joinGame()">Collega</button></div>
+      <div class="inline"><input type="text" id="join-code" placeholder="DSC-XXXX-XXXX"><button class="btn" id="join-btn" onclick="joinGame()">Collega</button></div>
     </div>
     ${(db||LOCAL_ONLY)? "" : `<p class="hint">Per condividere i dati fra dispositivi, incolla la configurazione Firebase nel file index.html (blocco evidenziato in cima allo script).</p>`}
     ${LOCAL_ONLY? `
@@ -668,21 +699,52 @@ function firstRunModal(){
     const c=newCode(); state=defaultState(); attachGame(c); save(); toast("Nuova partita: "+c);
   };
   const doJoin=()=>{
-    const c=($("fr-code").value||"").trim().toUpperCase();
-    if(!c){ toast("Inserisci un codice"); return; }
-    closeDyn("dyn-firstrun");
-    LS.del("descent_state_"+c);
-    attachGame(c); toast("Collegato a "+c);
+    const c=readCode("fr-code"); if(!c) return;
+    joinByCode(c, $("fr-join"), ()=>closeDyn("dyn-firstrun"));
   };
   $("fr-join").onclick=doJoin;
   $("fr-code").onkeydown=e=>{ if(e.key==="Enter") doJoin(); };
 }
 function joinGame(){
   if(SANDBOX){ toast("Non disponibile nella sandbox"); return; }
-  const c=($("join-code").value||"").trim().toUpperCase();
-  if(!c){ toast("Inserisci un codice"); return; }
-  LS.del("descent_state_"+c);
-  attachGame(c); toast("Collegato a "+c);
+  const c=readCode("join-code"); if(!c) return;
+  joinByCode(c, $("join-btn"));
+}
+/* formato generato da newCode(): DSC-XXXX-XXXX, alfabeto senza caratteri ambigui */
+const CODE_RE=/^DSC-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/;
+function readCode(inputId){
+  const c=($(inputId).value||"").trim().toUpperCase();
+  if(!c){ toast("Inserisci un codice"); return null; }
+  if(!CODE_RE.test(c)){ toast("Codice non valido: il formato è DSC-XXXX-XXXX"); return null; }
+  return c;
+}
+/* true/false = la partita esiste o no sul server; null = nessun server (modalità
+   locale); undefined = verifica impossibile (server non raggiungibile) */
+function remoteExists(code){
+  if(!db) return Promise.resolve(null);
+  const check=db.ref("partite/"+code).once("value").then(s=>s.exists());
+  const timeout=new Promise(res=>setTimeout(()=>res(undefined), 8000));
+  return Promise.race([check, timeout]).catch(()=>undefined);
+}
+/* Un codice sbagliato non deve creare in silenzio una partita vuota sul server:
+   prima di collegarsi si verifica che la partita esista. */
+async function joinByCode(code, btn, onConnect){
+  if(btn){ if(btn.disabled) return; btn.disabled=true; }
+  const exists=await remoteExists(code);
+  if(btn) btn.disabled=false;
+  const connect=()=>{
+    if(onConnect) onConnect();
+    LS.del("descent_state_"+code);
+    attachGame(code); toast("Collegato a "+code);
+  };
+  if(exists===false){ toast("Partita "+code+" non trovata sul server"); return; }
+  if(exists===undefined){
+    askConfirm("Impossibile verificare il codice",
+      "Il server non risponde. Se colleghi comunque "+esc(code)+" e la partita non esiste, ne verrà creata una nuova vuota.",
+      "","Collega comunque", connect, "danger");
+    return;
+  }
+  connect();
 }
 
 /* ── Eroi ── */
@@ -702,6 +764,7 @@ function openRecipeForm(id, newStato){
   const preId = (r&&r.prereq&&r.prereq.id)? r.prereq.id : "";
   const others=Object.values(state.ricette).filter(x=>x.id!==id);
   const preOpts=others.map(x=>`<option value="${x.id}" ${x.id===preId?"selected":""}>${esc(x.nome)}${x.pot?" +":""}</option>`).join("");
+  closeDyn("modal-recipe");
   $("modals").insertAdjacentHTML("beforeend", `
   <div class="overlay open" id="modal-recipe"><div class="modal">
     <h3>${r? "Modifica ricetta":"Nuova ricetta"}</h3>
@@ -983,9 +1046,33 @@ function findChallenger(plans){
   }
   return rankCh? {plan:rankCh, tipo:"rango"} : (nearCh? {plan:nearCh, tipo:"soglia"} : null);
 }
+/* firma canonica dello stato: ignora null, oggetti/array vuoti e ordine delle
+   chiavi, così l'eco di Firebase (che li scarta) non conta come modifica */
+function stateSig(s){
+  const canon=v=>{
+    if(Array.isArray(v)) return v.map(canon);
+    if(v && typeof v==="object"){
+      const o={};
+      Object.keys(v).sort().forEach(k=>{
+        const c=canon(v[k]);
+        if(c!=null && !(typeof c==="object" && !Object.keys(c).length)) o[k]=c;
+      });
+      return o;
+    }
+    return v;
+  };
+  return JSON.stringify(canon(s));
+}
+function clearPlan(){ currentPlan=null; planSig=null; }
+function resetOptimizer(){
+  clearPlan(); optCtx=null; planStaleNotice=false;
+  closeDyn("modal-choice");
+  renderOttimizza();
+}
 function runOptimizer(){
   if(state.eroiSel.length!==4){ toast("Seleziona esattamente 4 eroi"); return; }
-  optCtx={include:new Set(), exclude:new Set(), step:0};
+  planStaleNotice=false;
+  optCtx={include:new Set(), exclude:new Set(), step:0, sig:stateSig(state)};
   optimizerLoop();
 }
 function optimizerLoop(){
@@ -1018,6 +1105,11 @@ function showChoicePopup(a,b,tipo){
     </div></div>`);
 }
 function chooseOption(idx){
+  if(!optCtx || optCtx.sig!==stateSig(state)){
+    closeDyn("modal-choice"); optCtx=null; planStaleNotice=true; renderOttimizza();
+    toast("I dati sono cambiati: elabora di nuovo il piano");
+    return;
+  }
   const chosen=idx===0?_optA:_optB, other=idx===0?_optB:_optA;
   diffActions(chosen,other).forEach(a=>optCtx.include.add(a.key));
   diffActions(other,chosen).forEach(a=>optCtx.exclude.add(a.key));
@@ -1057,12 +1149,13 @@ function planStepsHtml(pl){
 }
 function showPlan(pl){
   currentPlan=pl;
+  planSig=stateSig(state);
   const el=$("opt-plan");
   $("opt-step1").style.display="none";
   if(!pl || !pl.actions.length){
     el.innerHTML=`<h2>Piano consigliato</h2>
       <p class="empty">Nessuna azione consigliata con le risorse attuali.<br>Controlla monete, magazzino e priorità (le ricette a 0 stelle sono ignorate).</p>
-      <button class="btn big" onclick="renderOttimizza()">↺ Ricomincia</button>`;
+      <button class="btn big" onclick="resetOptimizer()">↺ Ricomincia</button>`;
     return;
   }
   el.innerHTML=`<h2>Piano consigliato</h2>
@@ -1073,7 +1166,7 @@ function showPlan(pl){
       <div class="summary-row"><span>Azioni</span><b>${pl.actions.filter(a=>a.tipo==="acquisto").length} acquisti · ${pl.actions.filter(a=>a.tipo==="costruzione").length} costruzioni</b></div>
     </div>
     <button class="btn teal big" onclick="confirmApplyPlan()">✓ Applica piano (aggiorna inventario)</button>
-    <button class="btn big" onclick="renderOttimizza()">↺ Ricomincia</button>`;
+    <button class="btn big" onclick="resetOptimizer()">↺ Ricomincia</button>`;
 }
 function confirmApplyPlan(){
   const pl=currentPlan; if(!pl) return;
@@ -1099,6 +1192,11 @@ function transformIfPot(r){
 }
 function applyPlan(){
   const pl=currentPlan; if(!pl) return;
+  if(planSig!==stateSig(state)){
+    toast("I dati sono cambiati: elabora di nuovo il piano");
+    renderOttimizza();
+    return;
+  }
   LS.set("descent_undo_"+gameCode, JSON.stringify(state));
   Object.entries(pl.sells).forEach(([m,q])=>{
     state.materiali[m]=Math.max(0,(state.materiali[m]||0)-q);
@@ -1121,15 +1219,15 @@ function applyPlan(){
     transformIfPot(r);
   });
   state.monete=Math.max(0,state.monete);
-  currentPlan=null;
+  clearPlan();
   save();
   infoModal("Piano applicato","Tutti i dati sono stati aggiornati"+(db&&online?" e sincronizzati.":"."),"Vai all'inventario →",()=>goScreen("scr-inv"));
 }
 function undoApply(){
-  const bak=LS.get("descent_undo_"+gameCode);
-  if(!bak){ toast("Nessuna applicazione da annullare"); return; }
+  const bak=parseJSON(LS.get("descent_undo_"+gameCode));
+  if(!bak){ LS.del("descent_undo_"+gameCode); toast("Nessuna applicazione da annullare"); return; }
   askConfirm("Annullare l'ultima applicazione?","Lo stato tornerà a com'era prima dell'ultimo \"Applica piano\".","","↩ Ripristina",()=>{
-    state=normalize(JSON.parse(bak));
+    state=normalize(bak);
     LS.del("descent_undo_"+gameCode);
     save(); toast("Stato ripristinato");
   });
@@ -1143,8 +1241,8 @@ if(sbxBoot){
   /* la sandbox sopravvive a un refresh della pagina, ma mai a una sessione nuova */
   prevGameCode = gameCode;
   SANDBOX = sbxBoot;
-  const copia = LS.get("descent_state_"+sbxBoot);
-  if(copia){ gameCode=sbxBoot; state=normalize(JSON.parse(copia)); renderAll(); }
+  const copia = parseJSON(LS.get("descent_state_"+sbxBoot));
+  if(copia){ gameCode=sbxBoot; state=normalize(copia); renderAll(); }
   else { SANDBOX=null; prevGameCode=null; renderAll(); sandboxLoadCode(sbxBoot); }
 } else if(gameCode){
   attachGame(gameCode);
