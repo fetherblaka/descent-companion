@@ -4,6 +4,7 @@ import { BACKUP_MAX, LOCAL_ONLY } from "./config.js";
 import { ACTION_KEYS, ACTION_LABEL, MATERIALI, SFIDANTI_MAX } from "./data.js";
 import { backupSummary, backupsStatus, fmtBackupDate } from "./backup.js";
 import { renderOttimizza } from "./plan.js";
+import { missingText } from "./recipes.js";
 import { KEY, LS, S } from "./store.js";
 import { $, goScreen, matChips, starsHtml, updateSyncPill } from "./ui.js";
 import { esc, ownValue } from "./util.js";
@@ -65,6 +66,13 @@ function prereqHint(r) {
   return "";
 }
 
+/* pulsante di acquisto o costruzione: disattivato, con l'indicazione di cosa manca,
+   se monete o materiali non bastano */
+function actionRowHtml(missing, buttonHtml, editBtns) {
+  const row = `<div class="btn-row">${buttonHtml(missing ? " disabled" : "")}${editBtns}</div>`;
+  return missing ? row + `<p class="hint hint-block warn">⚠ ${esc(missing)}</p>` : row;
+}
+
 /* num: posizione nella lista mostrata (solo ricette possedute), non un dato della ricetta */
 function recipeCardHtml(r, ctx, num = null) {
   const id = esc(r.id);
@@ -79,10 +87,19 @@ function recipeCardHtml(r, ctx, num = null) {
     badge = starsHtml(r.stelle, r.id);
     actions = ignored
       ? `<div class="btn-row">${editBtns}</div><p class="hint hint-block">0 stelle — ignorata dall'ottimizzatore</p>`
-      : `<div class="btn-row"><button class="btn teal" data-action="markAcquistata" data-id="${id}">✓ Acquistata</button>${editBtns}</div>`;
+      : actionRowHtml(
+          missingText(S.state, r, "acquisto"),
+          (dis) =>
+            `<button class="btn teal" data-action="markAcquistata" data-id="${id}"${dis}>✓ Segna acquistata</button>`,
+          editBtns,
+        );
   } else if (ctx === "acquistata") {
     badge = `<span class="badge owned">ACQUISTATA</span>`;
-    actions = `<div class="btn-row"><button class="btn gold" data-action="markCostruita" data-id="${id}">⚒ Segna costruita</button>${editBtns}</div>`;
+    actions = actionRowHtml(
+      missingText(S.state, r, "costruzione"),
+      (dis) => `<button class="btn gold" data-action="markCostruita" data-id="${id}"${dis}>⚒ Segna costruita</button>`,
+      editBtns,
+    );
   } else {
     badge = `<span class="badge built">COSTRUITA</span>`;
     actions = `<div class="btn-row"><button class="btn danger" data-action="deleteRecipe" data-id="${id}">🗑 Elimina dall'app</button></div>`;

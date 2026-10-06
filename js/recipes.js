@@ -9,10 +9,6 @@ import { esc, ownValue, uid } from "./util.js";
 const NEW_RECIPE_STARS = 2;
 let formStars = NEW_RECIPE_STARS; /* priorità scelta nel form aperto */
 let formHeroes = []; /* eroi selezionati nel form aperto */
-/* stato delle checkbox dei modali di conferma: il modale viene rimosso prima che
-   la conferma venga eseguita, quindi il valore va conservato qui */
-let chkCoins = true;
-let chkMats = false;
 
 const materialName = (m) => ownValue(MAT, m)?.nome ?? m;
 
@@ -248,67 +244,97 @@ export function deleteRecipe(id) {
   );
 }
 
+/* cosa manca per acquistare (monete) o costruire (materiali) una ricetta, come messaggio
+   da mostrare; "" se le risorse bastano */
+export function missingText(st, r, tipo) {
+  if (tipo === "acquisto") {
+    const coins = r.costo - st.monete;
+    return coins > 0 ? `Monete insufficienti: mancano 🪙 ${coins}` : "";
+  }
+  const mats = sortMatEntries(Object.entries(r.materiali))
+    .map(([m, q]) => [m, q - (st.materiali[m] || 0)])
+    .filter(([, q]) => q > 0);
+  if (!mats.length) return "";
+  return "Materiali insufficienti: mancano " + mats.map(([m, q]) => `${q}× ${materialName(m)}`).join(", ");
+}
+
 export function markAcquistata(id) {
-  const r = ownValue(S.state.ricette, id);
+  const st = S.state;
+  const r = ownValue(st.ricette, id);
   if (!r) return;
+  const missing = missingText(st, r, "acquisto");
+  if (missing) {
+    toast(missing);
+    return;
+  }
   askConfirm(
     "Segnare come acquistata?",
-    esc(r.nome) + " uscirà dal Mercato e finirà tra le vostre ricette.",
-    `<div class="checkline"><input type="checkbox" id="chk-coins" checked><label for="chk-coins">Scala ${esc(r.costo)} monete dall'inventario</label></div>`,
+    esc(r.nome) + " uscirà dal Mercato e finirà tra le vostre ricette. Il costo viene scalato dalle monete.",
+    `<div class="card summary-card">
+      <div class="summary-row"><span>Monete</span><b>${esc(st.monete)} → 🪙 ${esc(st.monete - r.costo)}</b></div>
+    </div>`,
     "✓ Conferma",
     () => {
-      const cur = ownValue(S.state.ricette, id); /* riletta: lo stato può essere stato sostituito */
-      if (!cur) return;
+      /* riletta e ricontrollata: lo stato può essere cambiato su un altro dispositivo */
+      const cur = ownValue(S.state.ricette, id);
+      if (!cur || cur.stato !== "mercato") return;
+      const now = missingText(S.state, cur, "acquisto");
+      if (now) {
+        toast(now);
+        return;
+      }
       cur.stato = "acquistata";
-      if (chkCoins) S.state.monete = Math.max(0, S.state.monete - cur.costo);
+      S.state.monete -= cur.costo;
       save();
       toast("Ricetta acquistata");
     },
   );
-  const chk = $("chk-coins");
-  chkCoins = true;
-  if (chk) chk.onchange = () => (chkCoins = chk.checked);
 }
 
 export function markCostruita(id) {
   const st = S.state;
   const r = ownValue(st.ricette, id);
   if (!r) return;
+  const missing = missingText(st, r, "costruzione");
+  if (missing) {
+    toast(missing);
+    return;
+  }
   const mats = sortMatEntries(Object.entries(r.materiali)).filter(([, q]) => q > 0);
-  const enough = mats.every(([m, q]) => (st.materiali[m] || 0) >= q);
   const linked = r.pot && r.prereq && r.prereq.tipo === "ricetta" ? ownValue(st.ricette, r.prereq.id) : null;
-  const requires = mats.length
-    ? " richiede: " + mats.map(([m, q]) => esc(q) + "× " + esc(materialName(m))).join(", ") + "."
-    : "";
   const linkedNote = linked ? ` La versione normale collegata (${esc(linked.nome)}) verrà rimossa dall'app.` : "";
-  const checkbox = mats.length
-    ? `<div class="checkline"><input type="checkbox" id="chk-mats" ${enough ? "checked" : ""}><label for="chk-mats">Scala i materiali dall'inventario${enough ? "" : " (⚠ non tutti disponibili)"}</label></div>`
-    : "";
+  const rows = mats
+    .map(([m, q]) => {
+      const have = st.materiali[m] || 0;
+      return `<div class="summary-row"><span>${esc(materialName(m))}</span><b>${esc(have)} → ${esc(have - q)}</b></div>`;
+    })
+    .join("");
   askConfirm(
     "Segnare come costruita?",
-    esc(r.nome) + requires + linkedNote,
-    checkbox,
+    esc(r.nome) + (mats.length ? ": i materiali necessari vengono scalati dall'inventario." : ".") + linkedNote,
+    rows ? `<div class="card summary-card">${rows}</div>` : "",
     "⚒ Conferma",
     () => {
-      const cur = ownValue(S.state.ricette, id); /* riletta: lo stato può essere stato sostituito */
-      if (!cur) return;
-      cur.stato = "costruita";
-      if (chkMats) {
-        Object.entries(cur.materiali)
-          .filter(([, q]) => q > 0)
-          .forEach(([m, q]) => {
-            S.state.materiali[m] = Math.max(0, (S.state.materiali[m] || 0) - q);
-          });
+      /* riletta e ricontrollata: lo stato può essere cambiato su un altro dispositivo */
+      const cur = ownValue(S.state.ricette, id);
+      if (!cur || cur.stato === "costruita") return;
+      const now = missingText(S.state, cur, "costruzione");
+      if (now) {
+        toast(now);
+        return;
       }
+      cur.stato = "costruita";
+      Object.entries(cur.materiali)
+        .filter(([, q]) => q > 0)
+        .forEach(([m, q]) => {
+          S.state.materiali[m] -= q;
+        });
       transformIfPot(cur);
       save();
       toast("Ricetta costruita");
     },
     "gold",
   );
-  const chk = $("chk-mats");
-  chkMats = enough && mats.length > 0;
-  if (chk) chk.onchange = () => (chkMats = chk.checked);
 }
 
 /* quando viene costruita una potenziata collegata a una normale, la normale si trasforma e sparisce */

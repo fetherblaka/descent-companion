@@ -9,7 +9,8 @@ tramite Firebase Realtime Database.
 - **Inventario**: monete e materiali posseduti.
 - **Mercato**: magazzino dei materiali acquistabili e ricette in vendita, con priorità a stelle.
 - **Ricette**: ricette acquistate e costruite, numerate nell'ordine della lista (`#12`) e con ricerca per nome o
-  numero; versioni potenziate collegate alla versione normale.
+  numero; versioni potenziate collegate alla versione normale. "Segna acquistata" e "Segna costruita" chiedono
+  conferma e scalano monete o materiali; senza risorse sufficienti il pulsante è disattivato e indica cosa manca.
 - **Ottimizza**: scelta dei 4 eroi in missione e piano consigliato (vendite, acquisti, costruzioni), applicabile
   all'inventario per intero o fino a uno step, e annullabile. Vedi [Ottimizzatore](#ottimizzatore).
 - **Backup**: in **Altro**, copie della partita salvate nel database (le ultime 3), ripristinabili da ogni
@@ -89,8 +90,9 @@ Convenzioni del codice:
   [js/events.js](js/events.js).
 - **Materiali**: `MATERIALI` è ordinato alfabeticamente (base, poi essenziali); gli elenchi presi da oggetti
   (materiali di una ricetta, vendite e acquisti del piano) passano da `sortMatEntries()`.
-- **Layout**: nessuno scorrimento orizzontale. Nei contenitori flex/grid i figli hanno `min-width: 0` e le colonne
-  `minmax(0, 1fr)`; i testi lunghi vanno a capo.
+- **Layout**: la pagina è alta quanto l'area visibile (`100dvh`) e non scorre: scorre solo `main`, mentre header e
+  nav non rispondono ai trascinamenti (`touch-action: none`). Nessuno scorrimento orizzontale: nei contenitori
+  flex/grid i figli hanno `min-width: 0` e le colonne `minmax(0, 1fr)`; i testi lunghi vanno a capo.
 - **HTML generato**: ogni valore interpolato passa da `esc()`, anche i numeri: i dati arrivano da un database condiviso.
 - **Accessibilità**: i controlli che non sono `<button>` hanno `role="button"` e `tabindex="0"`; i modali si aprono
   con `openModal()`, che gestisce focus, `inert` e chiusura.

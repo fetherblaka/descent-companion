@@ -31,13 +31,22 @@
 .modal:focus-visible {
   outline: none;
 }
-/* ── Nessuno scorrimento laterale ──
-   Oltre ai blocchi qui sotto, i figli di flex e grid hanno min-width: 0 e i testi
-   lunghi senza spazi vanno a capo (overflow-wrap), così nulla supera la larghezza. */
+/* ── Pagina ferma ──
+   Scorre solo main. La pagina è alta quanto l'area visibile e non scorre in nessuna
+   direzione: con un'altezza minima di 100vh (su mobile più alta dell'area visibile,
+   ridotta dalle barre del browser) un trascinamento partito da header o nav faceva
+   scorrere la pagina intera, l'header usciva dallo schermo e sotto la nav compariva una
+   fascia vuota. Nessuno scorrimento laterale: oltre ai blocchi qui sotto, i figli di
+   flex e grid hanno min-width: 0 e i testi lunghi senza spazi vanno a capo
+   (overflow-wrap), così nulla supera la larghezza. */
 html,
 body {
-  overflow-x: hidden;
+  overflow: hidden;
+  overscroll-behavior: none;
   max-width: 100%;
+}
+html {
+  height: 100%;
 }
 body {
   overflow-wrap: anywhere;
@@ -52,7 +61,8 @@ body {
   line-height: 1.5;
   display: flex;
   justify-content: center;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
 }
 
 /* ── Struttura ── */
@@ -60,8 +70,7 @@ body {
   width: 100%;
   max-width: 480px;
   background: var(--bg);
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -69,6 +78,13 @@ body {
   border-right: 1px solid #1d2430;
   min-width: 0;
   overflow-x: clip;
+}
+/* header e nav non scorrono: un trascinamento che parte da lì non muove nulla (i tocchi
+   restano attivi) */
+header,
+.sbx-bar,
+nav {
+  touch-action: none;
 }
 header {
   padding: calc(14px + env(safe-area-inset-top)) 18px 10px;
@@ -519,6 +535,7 @@ h2:first-child {
   max-height: 86vh;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 18px;
   min-width: 0;
 }
@@ -543,6 +560,39 @@ h2:first-child {
 .modal-icon {
   font-size: 42px;
   margin: 6px 0 10px;
+}
+/* loader dell'ottimizzatore: compare dopo un attimo, così un calcolo rapido non lo fa
+   lampeggiare. Si animano solo opacity e transform, che il browser fa avanzare anche
+   mentre la pagina è occupata dal calcolo. */
+.overlay:has(> .modal.loading) {
+  animation: fade-in 0.2s ease-out 0.15s both;
+}
+.modal.loading .sub {
+  margin-bottom: 4px;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 8px auto 14px;
+  border: 3px solid var(--line);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
 }
 label,
 .field-label {

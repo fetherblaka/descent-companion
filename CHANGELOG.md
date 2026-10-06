@@ -4,6 +4,23 @@ Le modifiche rilevanti di ogni versione pubblicata. Le versioni corrispondono ai
 
 ## [Non rilasciato]
 
+## [1.1.1] - 2026-10-06
+
+### Aggiunto
+
+- Loader durante l'elaborazione dei consigli in **Ottimizza**, che con molte ricette può richiedere qualche secondo.
+
+### Modificato
+
+- "Segna acquistata" (prima "Acquistata") e "Segna costruita" chiedono conferma senza caselle da spuntare: le monete o
+  i materiali vengono sempre scalati e il riepilogo mostra le quantità prima e dopo. Se le risorse non bastano il
+  pulsante è disattivato e la ricetta indica cosa manca.
+
+### Corretto
+
+- Un trascinamento partito dall'header o dalla barra di navigazione faceva scorrere la pagina intera: l'header usciva
+  dallo schermo e sotto la barra compariva una fascia vuota. Ora scorre solo il contenuto.
+
 ## [1.1.0] - 2026-09-14
 
 ### Aggiunto

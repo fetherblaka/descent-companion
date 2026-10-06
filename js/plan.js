@@ -19,6 +19,7 @@ let planStaleNotice = false; /* avviso "piano non più valido" */
 /* elaborazione in corso: piani candidati, prossimo da confrontare, piano che ha vinto
    finora e firma dello stato di partenza */
 let optCtx = null;
+let optimizing = false; /* calcolo dei piani in corso (loader aperto) */
 
 const fmtValue = (v) => Math.round(v * 100) / 100;
 const isPurchase = (a) => a.tipo === "acquisto";
@@ -74,14 +75,35 @@ export function resetOptimizer() {
   renderOttimizza();
 }
 
-export function runOptimizer() {
+/* risolve dopo che il browser ha disegnato i cambiamenti già fatti alla pagina */
+const afterPaint = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
+export async function runOptimizer() {
+  if (optimizing) return;
   if (S.state.eroiSel.length !== HEROES_PER_MISSION) {
     toast(`Seleziona esattamente ${HEROES_PER_MISSION} eroi`);
     return;
   }
   planStaleNotice = false;
-  /* fino a maxSfidanti piani entro la soglia, dal migliore: con N piani bastano N−1 scelte */
-  const cands = candidatePlans(S.state, S.state.impostazioni.maxSfidanti);
+  /* il calcolo blocca la pagina finché non termina: prima si mostra il loader, la cui
+     animazione (solo transform e opacity) prosegue anche durante il calcolo */
+  optimizing = true;
+  openModal(
+    "modal-loading",
+    `<div class="spinner" aria-hidden="true"></div>
+    <h3>Elaborazione in corso…</h3>
+    <p class="sub">Ricerca dei piani migliori con le risorse attuali: può richiedere qualche secondo.</p>`,
+    { modalClass: "center loading", dismiss: "none" },
+  );
+  let cands;
+  try {
+    await afterPaint();
+    /* fino a maxSfidanti piani entro la soglia, dal migliore: con N piani bastano N−1 scelte */
+    cands = candidatePlans(S.state, S.state.impostazioni.maxSfidanti);
+  } finally {
+    optimizing = false;
+    closeDyn("modal-loading");
+  }
   if (cands.length < 2) {
     optCtx = null;
     showPlan(cands[0] || null);
